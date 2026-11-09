@@ -106,7 +106,7 @@ test("Claude 历史转换文本、工具、结果和签名原块", () => {
     tools: [{ type: "function", name: "lookup", parameters: { type: "object" } }],
   });
   assert.equal(payload.system, "系统指令");
-  assert.equal(payload.max_tokens, 8192);
+  assert.equal(payload.max_tokens, 64000);
   assert.equal(payload.stream, true);
   assert.deepEqual(payload.cache_control, { type: "ephemeral" });
   assert.equal(payload.tools[0].input_schema.type, "object");

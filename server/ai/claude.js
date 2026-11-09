@@ -194,7 +194,7 @@ export function buildClaudePayload({
 
   const payload = {
     model,
-    max_tokens: 8192,
+    max_tokens: 64000,
     stream,
     messages: output,
     cache_control: { type: "ephemeral" },
