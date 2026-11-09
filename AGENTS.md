@@ -8,7 +8,7 @@
 - DDL 统一放在 `server/db.js`，启动时初始化。
 - 表字段先放标识和业务数据，时间字段放最后；messages 顺序为 id、session_id、item、usage、created_at。
 - API 按 URL 路径逐层拆目录，每层用 `index.js` 分发；同一路径的多个 HTTP 方法分别写在 `get.js`、`post.js` 等文件中。
-- SQL 直接写在对应 API 处理函数内，不建 repository/service 层，不封装查询、写入或事务方法。
+- Web 与 CLI 共用的会话创建、上下文读取、usage 和压缩保存集中在 `server/session.js`；除此之外，SQL 直接写在对应 API 处理函数内，不建 repository/service 层。
 - 注释解释用途和必要的边界处理，变量名表达含义。
 - 提交改动前执行 `npm run format`，用 `npm run format:check` 检查格式。
 - 修改运行逻辑后执行 `npm run check`、`npm test`；修改界面后执行 `npm run ui:build`。
@@ -26,7 +26,7 @@
 - 完整模型块按 output 原顺序交付，然后发 usage，最后执行工具；done 每次运行只发一次。
 - `server/agent/runner.js` 只接收工具调用，解析参数，执行工具并返回结果。
 - 每次请求模型前，根据上次模型返回的 `usage.total_tokens` 判断压缩，禁止估算或累加历史 usage。用户输入时从数据库读取，工具循环使用上次响应用量。
-- `messages.usage` 保存原始 usage JSON，只附在每次模型响应最后一项；摘要必须先入库，再继续请求模型。
+- `messages.usage` 保存原始 usage JSON，只附在每次模型响应最后一项；`compactions.usage` 保存压缩请求的原始 usage JSON；摘要必须先入库，再继续请求模型。
 - 工具图片直接放在 function_call_output.output 数组中，不另造 user 消息。图片存文件，数据库和事件只存图片地址；AI 请求入口读文件转 Base64，仅用于本次请求，不修改原消息。
 - `runner.js` 直接导入四个工具实现，`functions` 目录不设置 `index.js`。
 

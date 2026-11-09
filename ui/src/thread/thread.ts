@@ -49,6 +49,7 @@ export interface Compaction {
   id: number;
   through_id: number;
   summary: string;
+  usage?: Record<string, unknown> | null;
   created_at: number;
 }
 export interface Row {

@@ -4,6 +4,12 @@ import { saveImage } from "../../../../images.js";
 import { run } from "../../../../agent/index.js";
 import { message } from "../../../../ai/index.js";
 import { requireModel, renderPrompt } from "../../../../config.js";
+import {
+  createRunRecorder,
+  loadContext,
+  messagePreview,
+  saveUserMessage,
+} from "../../../../session.js";
 import { body, fail, stream } from "../../../http.js";
 
 export default async function post(req, res, context, id) {
@@ -91,12 +97,7 @@ export default async function post(req, res, context, id) {
   let errorSent = false;
   let doneSent = false;
   const first = session.first ? JSON.parse(session.first) : message(text);
-  const preview =
-    first.content
-      .map((part) => part.text || "")
-      .join("")
-      .replace(/\s+/g, " ")
-      .slice(0, 60) || "[图片]";
+  const preview = messagePreview(first) || "[图片]";
   let sequence = 0;
   try {
     // 先保存本次用户输入，下面查询上下文时会一起取出，不再重复追加。
@@ -120,55 +121,14 @@ export default async function post(req, res, context, id) {
       user.item.content.push({ type: "input_image", image_url: imageURL, detail: "auto" });
     }
     controller.signal.throwIfAborted();
-    db.exec("BEGIN IMMEDIATE");
-    try {
-      const saved = db
-        .prepare("INSERT INTO messages (session_id, item, created_at) VALUES (?, ?, ?)")
-        .run(id, JSON.stringify(user.item), user.created_at);
-      user.id = Number(saved.lastInsertRowid);
-      db.prepare("UPDATE sessions SET updated_at = ? WHERE id = ?").run(user.created_at, id);
-      db.exec("COMMIT");
-    } catch (error) {
-      db.exec("ROLLBACK");
-      throw error;
-    }
+    const savedUser = saveUserMessage(db, id, user.item, user.created_at);
+    user.id = savedUser.id;
     // 用户消息已提交，即使随后停止或模型失败，也要保留其图片。
     config.run_images.clear();
 
-    // 找到最近一条模型输出，即使它没有 usage，也不回退到更早的用量。
-    const previousResponse = db
-      .prepare(
-        `
-      SELECT usage FROM messages
-      WHERE session_id = ? AND (
-        json_extract(item, '$.role') = 'assistant'
-        OR json_extract(item, '$.type') IN ('function_call', 'reasoning')
-      )
-      ORDER BY id DESC LIMIT 1
-    `,
-      )
-      .get(id);
-    const usage = previousResponse?.usage ? JSON.parse(previousResponse.usage) : null;
-    // 最新摘要的 through_id 表示已覆盖到哪条消息（包含该条）。
-    const latest = db
-      .prepare("SELECT * FROM compactions WHERE session_id = ? ORDER BY id DESC LIMIT 1")
-      .get(id);
-    // 无摘要就取全会话；有摘要就取覆盖位置之后的全部消息，按 ID 排到最新。
-    const stored = db
-      .prepare("SELECT id, item FROM messages WHERE session_id = ? AND id > ? ORDER BY id")
-      .all(id, latest?.through_id || 0);
-    const messages = stored.map((row) => JSON.parse(row.item));
-    // 与 messages 位置一一对应，供压缩时把数组下标映射回数据库 ID。
-    const messageIds = stored.map((row) => row.id);
-    if (latest) {
-      // 上下文 = 最新摘要 + 后续消息（已包含本次用户输入）。
-      messages.unshift(message(latest.summary));
-      messageIds.unshift(latest.through_id);
-    }
-
-    const pending = [];
-    let remainingCalls = 0;
-    let receivedUsage = false;
+    // 找到最近一条模型输出、最新摘要和后续消息；压缩边界与数据库 ID 一一对应。
+    const { messages, messageIds, usage } = loadContext(db, id);
+    const recorder = createRunRecorder(db, id, messageIds, preview, 1);
     emit = stream(res, controller);
     emit({
       type: "message",
@@ -216,101 +176,28 @@ export default async function post(req, res, context, id) {
         controller.signal.throwIfAborted();
         // API 的保存信息放在事件外层，Agent 的原始 item 保持不变。
         const outgoing = { ...event };
-        switch (event.type) {
-          case "compact": {
-            if (event.status !== "completed") {
-              break;
-            }
-            const throughId = messageIds[event.end - 1];
-            if (event.start !== 0 || !throughId) {
-              throw new Error("压缩边界无效");
-            }
-            const summary = event.item.content[0].text;
-            outgoing.compaction = db
-              .prepare(
-                "INSERT INTO compactions (session_id, through_id, summary, created_at) VALUES (?, ?, ?, ?) RETURNING *",
-              )
-              .get(id, throughId, summary, Date.now());
-            messageIds.splice(event.start, event.end - event.start, throughId);
-            break;
-          }
-          case "message":
-          case "reasoning":
-          case "function_call":
-          case "function_call_output": {
-            if (!event.item) {
-              break;
-            }
-            outgoing.sequence = sequence++;
-            outgoing.created_at = Date.now();
-            pending.push({
-              sequence: outgoing.sequence,
-              item: event.item,
-              usage: null,
-              created_at: outgoing.created_at,
-            });
-            if (event.type === "function_call") {
-              remainingCalls++;
-            } else if (event.type === "function_call_output") {
-              remainingCalls--;
-            }
-            break;
-          }
-          case "usage":
-            receivedUsage = true;
-            if (pending.length > 0) {
-              pending[pending.length - 1].usage = event.usage;
-            }
-            break;
+        const record = recorder.track(event);
+        if (record.sequence !== undefined) {
+          outgoing.sequence = record.sequence;
+          outgoing.created_at = record.created_at;
         }
-
-        // usage 只表示模型响应完成，工具结果齐全后才提交这一轮。
-        if (receivedUsage && remainingCalls === 0 && pending.length > 0) {
-          const savedMessages = [];
-          let savedSession;
-          db.exec("BEGIN IMMEDIATE");
-          try {
-            for (const row of pending) {
-              let savedUsage = null;
-              if (row.usage !== null) {
-                savedUsage = JSON.stringify(row.usage);
-              }
-              const saved = db
-                .prepare(
-                  "INSERT INTO messages (session_id, item, usage, created_at) VALUES (?, ?, ?, ?)",
-                )
-                .run(id, JSON.stringify(row.item), savedUsage, row.created_at);
-              savedMessages.push({
-                sequence: row.sequence,
-                id: Number(saved.lastInsertRowid),
-                usage: row.usage,
-                created_at: row.created_at,
-              });
-            }
-            savedSession = db
-              .prepare("UPDATE sessions SET updated_at = ? WHERE id = ? RETURNING *")
-              .get(pending.at(-1).created_at, id);
-            db.exec("COMMIT");
-          } catch (error) {
-            db.exec("ROLLBACK");
-            throw error;
-          }
+        if (record.compaction) {
+          outgoing.compaction = record.compaction;
+        }
+        if (record.saved) {
           // COMMIT 成功后才通知前端接管真实 ID；失败不能确认任何一条。
-          outgoing.saved = savedMessages;
-          outgoing.session = { ...savedSession, preview, running: true };
-          messageIds.push(...savedMessages.map((row) => row.id));
+          outgoing.saved = record.saved;
+          outgoing.session = record.session;
           // 本轮图片已被完整消息引用，之后不再属于待清理文件。
-          for (const row of pending) {
-            if (row.item.type === "function_call_output" && Array.isArray(row.item.output)) {
-              for (const part of row.item.output) {
+          for (const item of record.savedItems || []) {
+            if (item.type === "function_call_output" && Array.isArray(item.output)) {
+              for (const part of item.output) {
                 if (part.type === "input_image") {
                   config.run_images.delete(part.image_url);
                 }
               }
             }
           }
-          pending.length = 0;
-          receivedUsage = false;
         }
         emit(outgoing);
       },

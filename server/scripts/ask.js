@@ -1,8 +1,16 @@
 import { run } from "../agent/index.js";
 import { message } from "../ai/index.js";
 import { requireModel, renderPrompt, validateConfig } from "../config.js";
+import openDB from "../db.js";
+import {
+  createRunRecorder,
+  createSession,
+  loadContext,
+  messagePreview,
+  saveUserMessage,
+} from "../session.js";
 
-export default async function ask(prompt, config, { workdir } = {}) {
+export default async function ask(prompt, config, { workdir, locations } = {}) {
   if (!prompt.trim()) {
     throw new Error("用法：agent ask [--workdir 目录] <问题>");
   }
@@ -10,7 +18,12 @@ export default async function ask(prompt, config, { workdir } = {}) {
     config.workdir = workdir;
     validateConfig(config);
   }
+  if (!locations) {
+    throw new Error("agent ask 需要数据目录");
+  }
   requireModel(config);
+
+  const db = openDB(locations.db);
   const controller = new AbortController();
   const timer = setTimeout(
     () => controller.abort(new DOMException("回复超时", "TimeoutError")),
@@ -18,13 +31,20 @@ export default async function ask(prompt, config, { workdir } = {}) {
   );
   let receivedText = false;
   try {
+    const session = createSession(db);
+    const userItem = message(prompt);
+    saveUserMessage(db, session.id, userItem);
+    const { messages, messageIds, usage } = loadContext(db, session.id);
+    const recorder = createRunRecorder(db, session.id, messageIds, messagePreview(userItem));
     const result = await run({
       instructions: renderPrompt(config.system, config.workdir),
-      messages: [message(prompt)],
+      messages,
       model: config.model,
       config,
+      usage,
       signal: controller.signal,
       onEvent: (event) => {
+        recorder.track(event);
         if (event.type === "message" && event.delta) {
           receivedText = true;
           process.stdout.write(event.delta);
@@ -45,9 +65,12 @@ export default async function ask(prompt, config, { workdir } = {}) {
     });
     if (receivedText) {
       process.stdout.write("\n");
+    } else if (result.text) {
+      process.stdout.write(`${result.text}\n`);
     }
-    return result;
+    return { ...result, session_id: session.id };
   } finally {
     clearTimeout(timer);
+    db.close();
   }
 }

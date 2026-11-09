@@ -22,6 +22,7 @@ CREATE TABLE IF NOT EXISTS compactions (
   session_id TEXT,
   through_id INTEGER,
   summary TEXT,
+  usage TEXT,
   created_at INTEGER
 );
 CREATE INDEX IF NOT EXISTS idx_compactions_session ON compactions(session_id, id);

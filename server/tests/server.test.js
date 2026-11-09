@@ -162,6 +162,7 @@ test("三张表字段、路由、鉴权、分页和删除", async (t) => {
     "session_id",
     "through_id",
     "summary",
+    "usage",
     "created_at",
   ]);
   const tables = f.runtime.db
@@ -503,13 +504,21 @@ test("用户输入读取数据库 usage，摘要保存后才请求模型", async
     async (_config, input, tools) => {
       if (!tools.length) {
         assert.equal(calls, 2);
-        return answer("请求前保存的摘要");
+        return {
+          ...answer("请求前保存的摘要"),
+          usage: { input_tokens: 3, output_tokens: 1, total_tokens: 4 },
+        };
       }
       calls++;
       if (calls === 3) {
         const saved = f.runtime.db.prepare("SELECT * FROM compactions").all();
         assert.equal(saved.length, 1);
         assert.equal(saved[0].summary, f.config.compact_prefix + "请求前保存的摘要");
+        assert.deepEqual(JSON.parse(saved[0].usage), {
+          input_tokens: 3,
+          output_tokens: 1,
+          total_tokens: 4,
+        });
         assert.ok(input[0].content[0].text.includes(saved[0].summary));
       }
       return { ...answer("回答"), usage: { input_tokens: 8, output_tokens: 2, total_tokens: 10 } };

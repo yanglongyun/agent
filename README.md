@@ -60,6 +60,7 @@ server/
       write.js               写文件
       edit.js                精确替换
   db.js                      SQLite 连接、DDL、初始化表
+  session.js                 Web 与 CLI 共用的会话、上下文、usage 和压缩持久化内核
   images.js                  图片文件保存与读取
   config.js                  配置读写
   defaults.json              默认配置、提示词
@@ -71,7 +72,7 @@ install.sh / install.ps1      一行安装入口
 agent / agent.cmd            启动器
 ```
 
-请求顺序例如：`server/index.js → api/index.js → sessions/index.js → [id]/index.js → messages/index.js → post.js`。每层消费一段路径，最后按 HTTP 方法进入处理文件。SQL 直接写在接口里，不封装查询、写入或事务方法。Agent 依次接收业务方准备的 instructions、messages、model，再接配置等参数，通过 `onEvent` 交付九种运行事件：`message`、`reasoning`、`function_call`、`function_call_output`、`retry`、`usage`、`compact`、`done`、`error`。SQL 保存由会话 API 负责，事件结构与发送顺序见 [dev/agent-events.md](./dev/agent-events.md)。
+请求顺序例如：`server/index.js → api/index.js → sessions/index.js → [id]/index.js → messages/index.js → post.js`。每层消费一段路径，最后按 HTTP 方法进入处理文件。会话创建、上下文读取、usage 与压缩记录由 `server/session.js` 统一负责，Web API 和 `agent ask` 共用。Agent 依次接收业务方准备的 instructions、messages、model，再接配置等参数，通过 `onEvent` 交付九种运行事件：`message`、`reasoning`、`function_call`、`function_call_output`、`retry`、`usage`、`compact`、`done`、`error`。事件结构与发送顺序见 [dev/agent-events.md](./dev/agent-events.md)。
 
 ## 开发
 
@@ -120,6 +121,7 @@ CREATE TABLE compactions (
   session_id TEXT,
   through_id INTEGER,
   summary TEXT,
+  usage TEXT,
   created_at INTEGER
 );
 CREATE INDEX idx_messages_session ON messages(session_id, id);
@@ -131,8 +133,8 @@ CREATE INDEX idx_compactions_session ON compactions(session_id, id);
 - `messages.usage` 保存模型返回的原始 usage JSON，每次响应只放在最后一条模型输出上。用户消息和工具结果为 NULL；模型没有返回 usage 也存 NULL。
 - 每次请求模型之前，用上次响应的 `usage.total_tokens` 与 `compact_at` 比较（大于等于时压缩）。用户发消息时从数据库读最近模型输出的 usage；工具执行后继续循环时使用本次模型返回的 usage。不累加历史 usage，不估算 token。
 - usage 反映上次响应的实际用量，不包含后来新增的用户输入和工具结果。没有有效用量就跳过判断，不回退到更早的 usage。
-- 压缩先发 compact.started，成功后通过 compact.completed 交付标准 user 摘要和数组覆盖范围；API 先保存摘要，再让 Agent 继续。压缩失败会终止本次运行。最终回答结束后不立即压缩，等下次请求模型前判断。
-- 每次压缩追加一条记录，summary 保存标准 user 摘要块的完整文字，`through_id` 表示已总结到哪条消息（包含该条）。
+- 压缩先发 compact.started，成功后通过 compact.completed 交付标准 user 摘要和数组覆盖范围；先保存摘要与本次压缩 usage，再让 Agent 继续。压缩失败会终止本次运行。最终回答结束后不立即压缩，等下次请求模型前判断。
+- 每次压缩追加一条记录，summary 保存标准 user 摘要块的完整文字，`through_id` 表示已总结到哪条消息（包含该条），`usage` 保存压缩请求返回的原始 usage JSON。
 - 下一次请求加载**最新摘要 + id 大于 through_id 的消息**。
 - 后续压缩包含上次摘要，原始消息始终保留，可以翻看。
 - 压缩按完整工具调用边界截断，至少保留 `keep` 条最近消息；没有合适边界或待压缩范围只有一个块就跳过。

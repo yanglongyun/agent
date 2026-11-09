@@ -71,7 +71,7 @@ export async function run(args = process.argv.slice(2)) {
   const config = loadConfig(locations);
   if (command === "ask") {
     const ask = (await import("./ask.js")).default;
-    const result = await ask(askOptions.prompt, config, askOptions);
+    const result = await ask(askOptions.prompt, config, { ...askOptions, locations });
     if (result.status !== "completed") {
       process.exitCode = 1;
     }
