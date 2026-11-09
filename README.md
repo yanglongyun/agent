@@ -86,7 +86,7 @@ npm start
 
 打开启动日志中的地址，使用日志中的访问令牌登录，在设置里填写模型地址、API Key、协议和模型名。支持 OpenAI Responses 与 Claude Messages；Claude Messages 使用 `x-api-key` 和 `anthropic-version: 2023-06-01`。
 
-开发界面：另开终端运行 `npm run ui:dev`，Vite 代理 `/api` 到本机 9528 端口。改后端可用 `npm run dev`。
+开发界面：另开终端运行 `npm run ui:dev`，Vite 代理 `/api` 到本机 9500 端口。改后端可用 `npm run dev`。
 
 ```sh
 npm run format              # 统一格式化源码

@@ -12,8 +12,8 @@ export default defineConfig({
     host: "127.0.0.1",
     port: 5180,
     proxy: {
-      "/api": "http://127.0.0.1:9528",
-      "/healthz": "http://127.0.0.1:9528",
+      "/api": "http://127.0.0.1:9500",
+      "/healthz": "http://127.0.0.1:9500",
     },
   },
 });

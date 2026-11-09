@@ -14,7 +14,7 @@
   "timeout": 120,
   "max_output": 30000,
   "api": {
-    "listen": "0.0.0.0:9528",
+    "listen": "0.0.0.0:9500",
     "token": ""
   }
 }
