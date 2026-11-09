@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import http from "node:http";
 import { callModel, message } from "../ai/index.js";
-import { buildClaudePayload } from "../ai/claude.js";
+import { buildClaudePayload, readClaudeStream } from "../ai/claude.js";
 import { defaults, validateConfig } from "../config.js";
 
 const user = (text) => message(text);
@@ -298,4 +298,17 @@ test("Claude 已收到工具参数后断流不重试", async (t) => {
     { code: "stream_interrupted" },
   );
   assert.equal(requests, 1);
+});
+
+test("兼容代理在最后的 content_block_stop 前发送 message_delta", async () => {
+  const events = claudeEvents();
+  const stop = events.findIndex((event) => event.type === "content_block_stop");
+  const delta = events.findIndex((event) => event.type === "message_delta");
+  [events[stop], events[delta]] = [events[delta], events[stop]];
+  const response = await readClaudeStream(new Response(eventBody(events)).body, {
+    source: config.url,
+    model: config.model,
+  });
+  assert.equal(response.status, "completed");
+  assert.equal(response.output[0].content[0].text, "你好");
 });

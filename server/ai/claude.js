@@ -355,6 +355,7 @@ export async function readClaudeStream(body, { signal, onEvent, onActivity, sour
   const blocks = new Map();
   const json = new Map();
   const open = new Set();
+  const closedEarly = new Set();
   const parser = sseParser((type, event) => {
     if (type === "ping") {
       return;
@@ -433,15 +434,18 @@ export async function readClaudeStream(body, { signal, onEvent, onActivity, sour
       return;
     }
     if (type === "content_block_stop") {
-      if (!open.delete(event.index)) {
+      if (!open.delete(event.index) && !closedEarly.delete(event.index)) {
         fail("Claude block stopped without start", "response_failed");
       }
       return;
     }
     if (type === "message_delta") {
-      if (open.size) {
-        fail("Claude message ended with an open block", "response_failed");
+      // 一些 Claude 兼容代理会在最后的 content_block_stop 之前发 message_delta；
+      // 块内容已经收齐，这里视为代理提前关闭，后续 stop 事件仍接受。
+      for (const index of open) {
+        closedEarly.add(index);
       }
+      open.clear();
       Object.assign(message, event.delta);
       message.usage = { ...message.usage, ...event.usage };
       ended = true;
