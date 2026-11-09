@@ -1,0 +1,12 @@
+# 发布包和临时构建目录
+/server/dist/
+/work/
+
+# 本地依赖和日志
+node_modules/
+*.log
+/.claude/
+
+# 本地运行数据
+/.data/
+.DS_Store

@@ -1,0 +1,51 @@
+/* agentic 特有的补充:登录页、设置页的键值表 */
+.login-page {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: var(--surface-side);
+}
+.login-card {
+  width: min(400px, 100%);
+  gap: 12px;
+  animation: sheet-in 0.24s var(--swift);
+}
+.login-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  margin-bottom: 4px;
+}
+.login-card .sheet-note {
+  margin: 0 0 10px;
+}
+.login-card code {
+  font-family: var(--font-mono);
+  background: var(--fill);
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+.login-submit {
+  justify-content: center;
+  height: 36px;
+  margin-top: 12px;
+}
+
+.model-tag.warn {
+  color: var(--warn);
+}
+
+.route-error {
+  flex: 1;
+  padding: 48px 28px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 16px;
+}

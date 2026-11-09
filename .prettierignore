@@ -1,0 +1,7 @@
+node_modules/
+ui/node_modules/
+ui/dist/
+server/dist/
+package-lock.json
+ui/package-lock.json
+.data/

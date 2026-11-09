@@ -1,0 +1,29 @@
+{
+  "name": "agentic",
+  "version": "0.6.0",
+  "private": true,
+  "type": "module",
+  "description": "通过浏览器使用的自托管 AI Agent",
+  "engines": {
+    "node": ">=22.23.1"
+  },
+  "bin": {
+    "agent": "server/scripts/cli.js"
+  },
+  "scripts": {
+    "start": "node server/index.js",
+    "dev": "node --watch server/index.js",
+    "test": "node --test server/tests/*.test.js",
+    "check": "node server/scripts/check.js",
+    "ui:dev": "npm --prefix ui run dev",
+    "ui:build": "npm --prefix ui run build",
+    "build": "npm run ui:build && node server/scripts/package.js --local",
+    "release:pack": "node server/scripts/package.js",
+    "format": "prettier --write --ignore-unknown .",
+    "format:check": "prettier --check --ignore-unknown .",
+    "ui:test": "npm --prefix ui test"
+  },
+  "devDependencies": {
+    "prettier": "3.6.2"
+  }
+}

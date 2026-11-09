@@ -1,0 +1,9 @@
+/* 触摸输入至少 16px，避免聚焦时页面自动放大。使用明确选择器，不依赖导入顺序。 */
+@media (pointer: coarse) {
+  body .field-input,
+  body .composer textarea,
+  body input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),
+  body textarea {
+    font-size: 16px;
+  }
+}
