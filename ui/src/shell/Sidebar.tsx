@@ -27,15 +27,6 @@ function conversationGroup(updatedAt: number) {
   return updatedAt >= yesterday.getTime() ? "昨天" : "更早";
 }
 
-// 会话头像的配色由 ID 稳定决定，同一会话每次显示同一种颜色。
-function avatarTone(id: string) {
-  let sum = 0;
-  for (const char of id) {
-    sum += char.charCodeAt(0);
-  }
-  return sum % 6;
-}
-
 export function Sidebar() {
   const shell = useShell();
   const location = useLocation();
@@ -156,14 +147,7 @@ export function Sidebar() {
                     onClick={shell.closeDrawer}
                     title={threadTitle(thread)}
                   >
-                    <span
-                      className="conv-avatar"
-                      data-tone={avatarTone(thread.id)}
-                      aria-hidden="true"
-                    >
-                      {Array.from(threadTitle(thread))[0] || "#"}
-                      {live && <span className="conv-live" aria-label="正在运行" />}
-                    </span>
+                    {live && <span className="conv-live" aria-label="正在运行" />}
                     <span className="clip">{threadTitle(thread)}</span>
                   </Link>
                   <Dropdown.Root>

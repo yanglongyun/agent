@@ -96,9 +96,9 @@
   position: relative;
   display: flex;
   align-items: center;
-  height: 58px;
-  margin: 1px 0;
-  border-radius: 12px;
+  height: 44px;
+  margin: 2px 0;
+  border-radius: 11px;
   transition: background 0.16s;
 }
 .conv:hover,
@@ -111,62 +111,27 @@
 .conv-title {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 9px;
   flex: 1;
   min-width: 0;
   height: 100%;
-  padding: 0 36px 0 10px;
+  padding: 0 36px 0 12px;
   text-decoration: none;
   color: var(--text-1);
-  font-size: 14.5px;
+  font-size: 14px;
   font-weight: 500;
 }
 .conv.on .conv-title {
-  font-weight: 650;
+  color: var(--accent);
+  font-weight: 600;
 }
-.conv-avatar {
-  position: relative;
-  display: grid;
-  place-items: center;
-  flex-shrink: 0;
-  width: 42px;
-  height: 42px;
-  border-radius: 50%;
-  color: #ffffff;
-  font-size: 17px;
-  font-weight: 650;
-  background: linear-gradient(135deg, #1a9fff, #0a7cff);
-}
-.conv-avatar[data-tone="1"] {
-  background: linear-gradient(135deg, #a66cff, #6c3bf0);
-}
-.conv-avatar[data-tone="2"] {
-  background: linear-gradient(135deg, #ff7a9c, #f0386b);
-}
-.conv-avatar[data-tone="3"] {
-  background: linear-gradient(135deg, #ffb347, #f57c00);
-}
-.conv-avatar[data-tone="4"] {
-  background: linear-gradient(135deg, #4cd9a1, #1fa971);
-}
-.conv-avatar[data-tone="5"] {
-  background: linear-gradient(135deg, #3ad3e8, #0f98c9);
-}
-/* 运行中：头像右下角的绿点，与 Messenger 的在线状态一致 */
 .conv-live {
-  position: absolute;
-  right: -1px;
-  bottom: -1px;
-  width: 13px;
-  height: 13px;
+  width: 8px;
+  height: 8px;
+  flex-shrink: 0;
   background: var(--ok);
-  border: 2.5px solid var(--surface-side);
   border-radius: 50%;
   animation: breathe 2s ease-in-out infinite;
-}
-.conv.on .conv-live,
-.conv:hover .conv-live {
-  border-color: var(--row-on);
 }
 .conv-menu {
   position: absolute;

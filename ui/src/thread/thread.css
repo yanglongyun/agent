@@ -226,30 +226,9 @@
 .msg.agent + .msg.mine {
   margin-top: 14px;
 }
-/* AI 消息：左侧头像贴近气泡左下角，操作行在下方 */
-.msg.agent {
-  display: grid;
-  grid-template-columns: 30px minmax(0, 1fr);
-  column-gap: 8px;
-  align-items: start;
-}
-.msg.agent > * {
-  grid-column: 2;
-  min-width: 0;
-}
-.msg.agent > .msg-avatar {
-  grid-column: 1;
-  grid-row: 1;
-  align-self: end;
-}
-.msg.agent > .act-row {
-  grid-row: 2;
-}
 .msg.agent > .md,
 .msg.agent > .working {
-  justify-self: start;
-  width: fit-content;
-  max-width: min(84%, 640px);
+  max-width: min(86%, 680px);
   padding: 10px 15px;
   border-radius: 20px 20px 20px 6px;
   background: var(--bubble-them);
@@ -623,10 +602,6 @@
   padding: 24px 24px 0;
   gap: 6px;
   text-align: center;
-}
-.blank > .brand-mark {
-  margin-bottom: 12px;
-  box-shadow: 0 10px 30px rgba(0, 132, 255, 0.32);
 }
 .blank-title {
   margin: 0;
@@ -1220,9 +1195,6 @@
   }
 }
 @media (max-height: 640px) {
-  .blank > .brand-mark {
-    display: none;
-  }
   .blank {
     padding-top: 12px;
   }

@@ -295,7 +295,7 @@ npm run format:check
 
 ### 页面路由
 
-界面采用类似 Messenger 的气泡聊天布局，使用统一的浅色、深色设计变量与 Lucide 图标。Radix 提供弹窗、菜单、提示和详情浮层的键盘交互、焦点管理及视口避让。顶栏展示头像、对话标题、模型切换、连接/回复状态与右上角「更多」菜单（收纳任务与后台命令、对话详情与用量、重命名及删除）；侧栏支持搜索对话与头像在线状态指示；消息区只呈现聊天气泡与打字状态（工具过程与用量收进每条回答的「更多」菜单），搭配单行胶囊输入区，浏览历史时可回到最新消息；设置按模型、指令、压缩、执行与外观分区，保存操作固定在底部。
+界面采用类似 Messenger 的气泡聊天布局，使用统一的浅色、深色设计变量与 Lucide 图标。Radix 提供弹窗、菜单、提示和详情浮层的键盘交互、焦点管理及视口避让。顶栏展示对话标题、模型切换、连接/回复状态与右上角「更多」菜单（收纳任务与后台命令、对话详情与用量、重命名及删除）；侧栏支持搜索对话与运行状态指示；消息区只呈现聊天气泡与打字状态（工具过程与用量收进每条回答的「更多」菜单），搭配单行胶囊输入区，浏览历史时可回到最新消息；设置按模型、指令、压缩、执行与外观分区，保存操作固定在底部。
 
 输入框与附件预览参考并适配了 [Ruixen UI Claude Chat Input](https://ruixen.com/docs/components/claude-chat-input) 的免费源码，适配组件位于 `ui/src/components/ruixen/ChatInput.tsx`，MIT 许可见 [ui/public/licenses/Ruixen-UI-MIT.md](ui/public/licenses/Ruixen-UI-MIT.md)。项目继续使用 Vite 和现有 CSS 变量，不依赖 Ruixen Pro、Next.js 或 Tailwind。
 

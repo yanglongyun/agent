@@ -2,7 +2,7 @@
 import { useEffect } from "react";
 import { Link, useParams } from "react-router";
 import { Hint } from "../overlay/Hint";
-import { Icon, Mark } from "../icons/Icon";
+import { Icon } from "../icons/Icon";
 import { useShell } from "../shell/layout";
 import { Composer } from "./Composer";
 import { MessageStream } from "./MessageStream";
@@ -68,7 +68,6 @@ export function ThreadView() {
         >
           <Icon name="panel" size={17} />
         </button>
-        <Mark size={36} />
         <div className="topbar-main">
           <span className="topbar-title clip">{title}</span>
           <TopbarStatus />

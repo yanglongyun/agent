@@ -2,7 +2,7 @@ import * as Dropdown from "@radix-ui/react-dropdown-menu";
 import { useNavigate } from "react-router";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
-import { Icon, Mark, type IconName } from "../icons/Icon";
+import { Icon, type IconName } from "../icons/Icon";
 import { copyText } from "../lib/clipboard";
 import { Hint } from "../overlay/Hint";
 import { Sheet } from "../overlay/Sheet";
@@ -458,7 +458,6 @@ export function MessageStream() {
 
           {ready && !rows.length && (
             <div className="blank float-in">
-              <Mark size={84} />
               <h1 className="blank-title">有什么可以帮你？</h1>
               <p className="blank-description">从一个问题、一份文件，或一个想法开始。</p>
               <div className="starters">
@@ -557,9 +556,6 @@ export function MessageStream() {
               const always = block.key === lastFinalKey && !busy;
               return (
                 <div key={block.key} className="msg agent float-in">
-                  <span className="msg-avatar">
-                    <Mark size={28} />
-                  </span>
                   <div className="md" dangerouslySetInnerHTML={{ __html: renderMd(row.content) }} />
                   {!row.streaming && (
                     <AssistantActions
@@ -618,9 +614,6 @@ export function MessageStream() {
 
           {showWorking && (
             <div className="msg agent float-in">
-              <span className="msg-avatar">
-                <Mark size={28} />
-              </span>
               <Working />
             </div>
           )}
