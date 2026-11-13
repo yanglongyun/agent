@@ -103,15 +103,25 @@ export function Sidebar() {
             <Icon name="compose" size={18} />
           </Link>
         </Hint>
-        <Hint text={shell.drawer ? "关闭导航" : "收起侧栏"}>
+        {shell.drawer ? (
           <button
             className="icon-btn side-toggle"
-            aria-label={shell.drawer ? "关闭导航" : "收起侧栏"}
-            onClick={shell.drawer ? shell.closeDrawer : shell.toggleCollapsed}
+            aria-label="关闭导航"
+            onClick={shell.closeDrawer}
           >
-            <Icon name={shell.drawer ? "close" : "panel"} size={18} />
+            <Icon name="close" size={18} />
           </button>
-        </Hint>
+        ) : (
+          <Hint text="收起侧栏">
+            <button
+              className="icon-btn side-toggle"
+              aria-label="收起侧栏"
+              onClick={shell.toggleCollapsed}
+            >
+              <Icon name="panel" size={18} />
+            </button>
+          </Hint>
+        )}
       </div>
       <div className="side-search">
         <Icon name="search" size={15} />
