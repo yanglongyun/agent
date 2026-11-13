@@ -92,7 +92,7 @@ npm run ui:build
 npm start
 ```
 
-打开启动日志中的地址，使用日志中的访问令牌登录，在设置的模型列表里逐个添加名称、协议、接口地址、模型 ID、API Key 和上下文窗口。模型列表不分配用途；在每个对话顶栏的标题下方切换对话模型（默认使用列表第一个模型，上下文压缩自动沿用同一模型）。选择保存在该次用户消息的 `meta.model_id`、`meta.compact_model_id`，已有对话刷新后恢复上次提交的选择，所选模型被移除时回退到默认模型。支持 OpenAI Responses（`responses`）、OpenAI Chat Completions（`chat-completions`）与 Claude Messages（`anthropic-messages`）。接口地址填写完整 URL，不根据协议重写路径。
+打开启动日志中的地址，使用日志中的访问令牌登录，在设置的模型列表里逐个添加名称、协议、接口地址、模型 ID、API Key 和上下文窗口。模型列表不分配用途；在每个对话顶栏的标题下方切换对话模型，上下文压缩自动沿用同一模型。浏览器会记住最近使用的模型：新对话和刷新后默认沿用它，从未选择过时使用列表第一个模型。选择保存在该次用户消息的 `meta.model_id`、`meta.compact_model_id`，已有对话优先恢复自己最近提交的模型，所选模型被移除时回退到最近使用的模型或列表第一个。支持 OpenAI Responses（`responses`）、OpenAI Chat Completions（`chat-completions`）与 Claude Messages（`anthropic-messages`）。接口地址填写完整 URL，不根据协议重写路径。
 
 Chat Completions 使用 `/v1/chat/completions` 和 Bearer 鉴权；流式请求开启 `stream_options.include_usage`，在 `[DONE]` 前读取最终 usage。消息、图片、工具定义、`tool_calls` 和 `tool` 结果转换集中在 `server/ai/chat.js`；工具参数片段收齐后才交付执行，截断或断流不作为成功响应。可选的原生 `reasoning_content` 转为内部 reasoning，仅向同一端点和模型回送。Chat 的工具结果图片在请求适配层转换为后续视觉输入，内部仍只保存工具结果。Claude Messages 使用 `x-api-key` 和 `anthropic-version: 2023-06-01`。
 
@@ -183,7 +183,7 @@ CREATE INDEX idx_compactions_session ON compactions(session_id, id);
 - `messages.usage` 保存模型返回的原始 usage JSON，每次响应只放在最后一条模型输出上。用户消息和工具结果为 NULL；模型没有返回 usage 也存 NULL。
 - 每次请求模型之前，用计量模块读取的上次实际 token 数与 `compact_at` 比较（大于等于时压缩）。Responses 和 Chat Completions 使用 `usage.total_tokens`，Claude 使用原生输入、缓存读取、缓存写入和输出之和。用户发消息时从数据库读最近模型输出的 usage 和计量信息；工具执行后继续循环时使用本次模型返回的用量。不累加历史 usage，不估算 token。
 - usage 反映上次响应的实际用量，不包含后来新增的用户输入和工具结果。没有有效用量就跳过判断，不回退到更早的 usage。
-- `models` 是模型连接的唯一来源，每个条目包含 `id`、`name`、`model`、`protocol`、`url`、`key`、`context_window`。模型用途由每次请求的 `model_id`、`compact_model_id` 明确指定，配置文件不保存全局用途；Web 界面在顶栏选择模型并让压缩沿用对话模型，CLI 和接口仍可分别指定。主请求、压缩和子 Agent 均使用所选条目的独立连接，支持跨厂商。配置接口只返回 `key_set`，保存时空密钥只按同一条目 ID 保留原值，移除条目后，Web 对话自动回退到模型列表第一项（无模型时提示先添加模型）。压缩模型必须能容纳待总结的历史。
+- `models` 是模型连接的唯一来源，每个条目包含 `id`、`name`、`model`、`protocol`、`url`、`key`、`context_window`。模型用途由每次请求的 `model_id`、`compact_model_id` 明确指定，配置文件不保存全局用途；Web 界面在顶栏选择模型并让压缩沿用对话模型，CLI 和接口仍可分别指定。主请求、压缩和子 Agent 均使用所选条目的独立连接，支持跨厂商。配置接口只返回 `key_set`，保存时空密钥只按同一条目 ID 保留原值，移除条目后，Web 对话自动回退到最近使用的模型或模型列表第一项（无模型时提示先添加模型）。压缩模型必须能容纳待总结的历史。
 - `compact_on_cache_expiry` 开启后，自上次模型响应结束超过 `cache_ttl` 秒，在下一次模型请求前压缩，即使未达 token 阈值。有效期默认 300 秒，仅用于本地过期判断，不改变厂商缓存设置，也不代表接口报告了精确失效时刻；按接口策略调整。新会话没有上次响应时不触发；最近消息与完整工具边界仍受 `keep` 保护。空闲时不后台请求。
 - 压缩先发 compact.started，成功后通过 compact.completed 交付标准 user 摘要和数组覆盖范围；先保存摘要与本次压缩 usage，再让 Agent 继续。压缩失败会终止本次运行。最终回答结束后不立即压缩，等下次请求模型前判断。
 - 每次压缩追加一条记录，summary 保存标准 user 摘要块的完整文字，`through_id` 表示已总结到哪条消息（包含该条），`usage` 保存压缩请求返回的原始 usage JSON。

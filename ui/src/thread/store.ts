@@ -150,8 +150,28 @@ function reset() {
     loadingOlder: false,
   }));
 }
-// 未发送的选择归当前草稿；已发送的选择以用户消息元数据为准，刷新后可恢复。
+// 最近使用的模型是跨对话、跨刷新的个人偏好，新对话默认沿用它。
+const LAST_MODEL_KEY = "agentic.model";
+function readLastModelId() {
+  try {
+    return localStorage.getItem(LAST_MODEL_KEY) || "";
+  } catch {
+    return "";
+  }
+}
+let lastModelId = readLastModelId();
+function rememberModel(id: string) {
+  lastModelId = id;
+  try {
+    localStorage.setItem(LAST_MODEL_KEY, id);
+  } catch {
+    /* 私隐模式存不了就算了 */
+  }
+}
+
+// 优先级：本对话里手动选的 > 本对话最近一次发送用的 > 最近使用的模型 > 列表第一个。
 export function selectedModel(state: ThreadState = get()) {
+  const models = state.status?.models || [];
   const choice = state.modelChoices[state.currentId];
   const last = [...state.messages]
     .reverse()
@@ -159,16 +179,17 @@ export function selectedModel(state: ThreadState = get()) {
       (message) =>
         message.item.type === "message" && message.item.role === "user" && message.meta?.model_id,
     );
-  const id = choice ?? last?.meta?.model_id;
-  const found = state.status?.models.find((model) => model.id === id);
-  if (found) {
-    return found;
+  for (const id of [choice, last?.meta?.model_id, lastModelId]) {
+    const found = models.find((model) => model.id === id);
+    if (found) {
+      return found;
+    }
   }
-  // 没有选择时默认取列表第一个。
-  return state.status?.models[0];
+  return models[0];
 }
 
 export function selectModel(id: string) {
+  rememberModel(id);
   set((state) => ({
     modelChoices: { ...state.modelChoices, [state.currentId]: id },
   }));
@@ -427,6 +448,7 @@ export function send(
     toast("请选择对话模型");
     return false;
   }
+  rememberModel(model.id);
   const key = retryRow?.key || crypto.randomUUID();
   const item: MessageItem = { type: "message", role: "user", content: [] };
   if (content) {

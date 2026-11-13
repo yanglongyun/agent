@@ -1284,7 +1284,7 @@ test("附件选择统一检查图片、文件数量与大小，原始文件类�
   assert.match(validateAttachments([{ type: "text/plain", size: 0 }]), /不能为空/);
 });
 
-test("模型用途由对话选择，双选择按对话隔离且随请求固定，刷新从消息恢复", async (t) => {
+test("模型选择记住最近使用的模型，旧对话以自己最近发送的为准，随请求固定", async (t) => {
   const original = globalThis.fetch;
   t.after(() => {
     globalThis.fetch = original;
@@ -1312,13 +1312,25 @@ test("模型用途由对话选择，双选择按对话隔离且随请求固定�
     currentId: "one",
     messages: [],
   });
-  // 未选择时取列表第一个；每个对话的选择互相独立。
+  // 从未选择过时取列表第一个；选过之后，新对话沿用最近使用的模型。
   assert.equal(selectedModel()?.id, "a");
   selectModel("b");
   assert.equal(selectedModel()?.id, "b");
   useThread.setState({ currentId: "two", messages: [] });
+  assert.equal(selectedModel()?.id, "b");
+  // 已发过消息的对话以自己最近一次发送的模型为准，不被最近使用的模型覆盖。
+  useThread.setState({
+    currentId: "three",
+    messages: [
+      {
+        id: 7,
+        item: { type: "message", role: "user", content: [] },
+        meta: { model_id: "a", compact_model_id: "a" },
+      },
+    ],
+  });
   assert.equal(selectedModel()?.id, "a");
-  useThread.setState({ currentId: "one" });
+  useThread.setState({ currentId: "one", messages: [] });
   let sent: Record<string, string> = {};
   globalThis.fetch = async (_route, options) => {
     sent = JSON.parse(String(options?.body));
