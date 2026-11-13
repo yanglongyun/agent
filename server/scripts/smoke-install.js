@@ -141,7 +141,7 @@ try {
   assert.match(await (await fetch(url)).text(), /<html/);
   const messages = await (await fetch(url + `/api/sessions/${id}/messages`, { headers })).json();
   assert.deepEqual(messages.messages, []);
-  await fs.access(path.join(env.AGENT_HOME, "chat.db"));
+  await fs.access(path.join(env.AGENT_HOME, "agent.db"));
   assert.equal((await fetch(url + "/api/unknown", { headers })).status, 404);
   console.log(
     "安装包验证通过：全新安装、重复安装、坏校验拒绝、保留数据、自带 Node.js 启动、界面、会话 API、SQLite。",

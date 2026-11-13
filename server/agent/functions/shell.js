@@ -1,32 +1,17 @@
-import { existsSync } from "node:fs";
-import path from "node:path";
-import { spawn } from "node:child_process";
-export default function shell(args, config, signal) {
-  if (typeof args.command !== "string" || !args.command) {
-    throw new Error("缺少 command 参数");
-  }
-  if (args.workdir !== undefined && typeof args.workdir !== "string") {
-    throw new Error("workdir 必须是字符串");
-  }
+import { spawnCommand, terminateCommand } from "../../shell-process.js";
+export default function shell(args, config, signal, context, callId) {
   signal?.throwIfAborted();
-  return new Promise((resolve, reject) => {
-    const windows = process.platform === "win32";
-    let command = "/bin/sh";
-    if (windows) {
-      command = "powershell.exe";
-    } else if (existsSync("/bin/bash")) {
-      command = "/bin/bash";
+  if (args.background !== undefined && typeof args.background !== "boolean") {
+    throw new Error("background 必须是布尔值");
+  }
+  if (args.background) {
+    if (!context) {
+      throw new Error("当前运行没有命令执行器");
     }
-    const child = spawn(
-      command,
-      windows ? ["-NoProfile", "-NonInteractive", "-Command", args.command] : ["-c", args.command],
-      {
-        cwd: path.resolve(config.workdir || process.cwd(), args.workdir || "."),
-        detached: !windows,
-        windowsHide: true,
-        stdio: ["ignore", "pipe", "pipe"],
-      },
-    );
+    return { text: JSON.stringify(context.manager.shell.start(args, context, config, callId)) };
+  }
+  return new Promise((resolve, reject) => {
+    const child = spawnCommand(args, config);
     let text = "";
     let truncated = false;
     let timedOut = false;
@@ -44,26 +29,8 @@ export default function shell(args, config, signal) {
     child.stderr.setEncoding("utf8");
     child.stdout.on("data", append);
     child.stderr.on("data", append);
-    const kill = () => {
-      if (!child.pid) {
-        return;
-      }
-      if (windows) {
-        spawn("taskkill", ["/pid", String(child.pid), "/T", "/F"], {
-          stdio: "ignore",
-        }).on("error", () => child.kill());
-      } else {
-        try {
-          process.kill(-child.pid, "SIGKILL");
-        } catch (e) {
-          if (e.code !== "ESRCH") {
-            child.kill("SIGKILL");
-          }
-        }
-      }
-    };
     const stop = () => {
-      kill();
+      terminateCommand(child);
       if (!killTimer) {
         killTimer = setTimeout(() => {
           child.stdout.destroy();
@@ -105,6 +72,7 @@ export default function shell(args, config, signal) {
       cleanup();
       reject(error);
     });
+    child.once("exit", () => terminateCommand(child));
     child.once("close", finish);
   });
 }

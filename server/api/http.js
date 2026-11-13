@@ -35,7 +35,7 @@ export async function body(req, fields, limit = 160 * 1024) {
   }
   return data;
 }
-export function stream(res, controller) {
+export function stream(res) {
   res.writeHead(200, {
     "content-type": "text/event-stream",
     "cache-control": "no-store",
@@ -55,7 +55,6 @@ export function stream(res, controller) {
       return;
     }
     if (res.writableLength > 1024 * 1024) {
-      controller.abort();
       res.destroy();
       return;
     }

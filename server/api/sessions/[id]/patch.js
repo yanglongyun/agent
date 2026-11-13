@@ -1,4 +1,6 @@
 import { body, json, fail } from "../../http.js";
+import { withCost } from "../../../metering/index.js";
+import { messagePreview } from "../../../session.js";
 
 export default async function patch(req, res, context, id) {
   const { title } = await body(req, ["title"]);
@@ -10,5 +12,14 @@ export default async function patch(req, res, context, id) {
   if (!session) {
     fail(404, "会话不存在");
   }
-  return json(res, 200, { ...session, running: context.activeReplies.has(id) });
+  const first = context.db
+    .prepare("SELECT item, meta FROM messages WHERE session_id = ? ORDER BY id LIMIT 1")
+    .get(id);
+  const entry = {
+    ...withCost(session),
+    preview: first ? messagePreview(JSON.parse(first.item), JSON.parse(first.meta || "null")) : "",
+    running: Boolean(context.replies.get(id)?.running),
+  };
+  context.events.publish({ session: entry });
+  return json(res, 200, entry);
 }

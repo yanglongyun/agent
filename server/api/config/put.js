@@ -5,13 +5,11 @@ export default async function put(req, res, context) {
   const patch = await body(
     req,
     [
-      "url",
-      "key",
-      "model",
-      "protocol",
-      "context_window",
+      "models",
       "system",
       "compact_at",
+      "compact_on_cache_expiry",
+      "cache_ttl",
       "keep",
       "compact_system",
       "compact_prefix",
@@ -27,17 +25,31 @@ export default async function put(req, res, context) {
 
   for (const [key, value] of Object.entries(patch)) {
     switch (key) {
-      case "url":
-      case "key":
-      case "model":
-      case "protocol":
+      case "models": {
+        if (!Array.isArray(value)) {
+          fail(400, "models 必须是数组");
+        }
+        next.models = value.map((model) => {
+          if (!model || typeof model !== "object" || Array.isArray(model)) {
+            fail(400, "模型配置必须是对象");
+          }
+          const saved = context.config.models.find((item) => item.id === model.id);
+          const item = { ...model };
+          for (const key of ["id", "name", "model", "url", "key", "protocol"]) {
+            if (typeof item[key] === "string") {
+              item[key] = item[key].trim();
+            }
+          }
+          if (item.key === "" && saved) {
+            item.key = saved.key;
+          }
+          return item;
+        });
+        break;
+      }
       case "workdir": {
         if (typeof value !== "string") {
           fail(400, `${key} 必须是字符串`);
-        }
-        // 设置页不回显密钥，留空表示保留已保存的密钥。
-        if (key === "key" && value.trim() === "") {
-          break;
         }
         next[key] = value.trim();
         break;
@@ -45,8 +57,9 @@ export default async function put(req, res, context) {
       case "system":
       case "compact_system":
       case "compact_prefix":
-      case "context_window":
       case "compact_at":
+      case "compact_on_cache_expiry":
+      case "cache_ttl":
       case "keep":
       case "run_timeout":
       case "timeout":

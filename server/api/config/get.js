@@ -2,24 +2,12 @@ import { json } from "../http.js";
 
 export default async function get(req, res, context) {
   const config = context.config;
-  let keyHint = "";
-  if (config.key) {
-    if (config.key.length <= 10) {
-      keyHint = "***";
-    } else {
-      keyHint = config.key.slice(0, 6) + "..." + config.key.slice(-4);
-    }
-  }
-
   const view = {
-    url: config.url,
-    key_set: Boolean(config.key),
-    key_hint: keyHint,
-    model: config.model,
-    protocol: config.protocol,
-    context_window: config.context_window,
+    models: config.models.map(({ key, ...model }) => ({ ...model, key_set: Boolean(key) })),
     system: config.system,
     compact_at: config.compact_at,
+    compact_on_cache_expiry: config.compact_on_cache_expiry,
+    cache_ttl: config.cache_ttl,
     keep: config.keep,
     compact_system: config.compact_system,
     compact_prefix: config.compact_prefix,

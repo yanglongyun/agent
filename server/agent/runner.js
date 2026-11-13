@@ -1,10 +1,12 @@
 // 接收一次工具调用，执行对应工具，返回结果。
+import stdio from "./functions/stdio.js";
 import shell from "./functions/shell.js";
 import read from "./functions/read.js";
 import write from "./functions/write.js";
 import edit from "./functions/edit.js";
+import agent from "./functions/agent.js";
 
-export default async function runTool(toolCall, config, signal) {
+export default async function runTool(toolCall, config, signal, taskContext) {
   signal?.throwIfAborted();
 
   try {
@@ -17,8 +19,12 @@ export default async function runTool(toolCall, config, signal) {
     }
 
     switch (toolCall.name) {
+      case "agent":
+        return await agent(args, config, signal, taskContext, toolCall.call_id);
       case "shell":
-        return await shell(args, config, signal);
+        return await shell(args, config, signal, taskContext, toolCall.call_id);
+      case "stdio":
+        return await stdio(args, config, signal, taskContext);
       case "read":
         return await read(args, config, signal);
       case "write":

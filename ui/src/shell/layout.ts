@@ -47,7 +47,7 @@ export const useShell = create<ShellState>((set) => ({
       }
       return {
         collapsed: false,
-        drawer: true,
+        drawer: window.matchMedia("(max-width: 760px)").matches,
       };
     }),
   closeDrawer: () => set({ drawer: false }),

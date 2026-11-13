@@ -15,7 +15,7 @@ export async function run(args = process.argv.slice(2)) {
       `agent ${version} — JavaScript / Node.js
 
 用法：
-  agent ask [--workdir 目录] <问题>  在终端向 Agent 提问
+  agent ask --model 标识 --compact-model 标识 [--workdir 目录] <问题>  在终端向 Agent 提问
   agent serve [--listen 地址]    前台运行 Web 服务
   agent install [--listen 地址]  安装并启动系统服务（Linux systemd）
   agent uninstall               停止并移除系统服务，保留数据
@@ -47,15 +47,30 @@ export async function run(args = process.argv.slice(2)) {
   let askOptions;
   if (command === "ask") {
     const words = [...rest];
-    let workdir;
-    if (words[0] === "--workdir" && words.length >= 3) {
-      workdir = words[1];
-      words.splice(0, 2);
-    } else if (words[0]?.startsWith("--workdir=") && words.length >= 2) {
-      workdir = words[0].slice(10);
-      words.shift();
+    askOptions = {};
+    while (words[0]?.startsWith("--")) {
+      const option = words.shift();
+      const split = option.indexOf("=");
+      const flag = split >= 0 ? option.slice(0, split) : option;
+      const value = split >= 0 ? option.slice(split + 1) : words.shift();
+      if (!value) {
+        throw new Error(`${flag} 缺少值`);
+      }
+      switch (flag) {
+        case "--model":
+          askOptions.modelId = value;
+          break;
+        case "--compact-model":
+          askOptions.compactModelId = value;
+          break;
+        case "--workdir":
+          askOptions.workdir = value;
+          break;
+        default:
+          throw new Error(`未知参数 ${flag}`);
+      }
     }
-    askOptions = { prompt: words.join(" "), workdir };
+    askOptions.prompt = words.join(" ");
   } else if (command === "serve" || command === "install") {
     if (rest.length === 2 && rest[0] === "--listen") {
       listen = rest[1];

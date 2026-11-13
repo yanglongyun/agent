@@ -1,7 +1,8 @@
 import { run } from "../agent/index.js";
 import { message } from "../ai/index.js";
-import { requireModel, renderPrompt, validateConfig } from "../config.js";
+import { runConfig, validateConfig } from "../config.js";
 import openDB from "../db.js";
+import { createTaskManager } from "../tasks.js";
 import {
   createRunRecorder,
   createSession,
@@ -10,9 +11,15 @@ import {
   saveUserMessage,
 } from "../session.js";
 
-export default async function ask(prompt, config, { workdir, locations } = {}) {
+export default async function ask(
+  prompt,
+  config,
+  { workdir, locations, modelId, compactModelId } = {},
+) {
   if (!prompt.trim()) {
-    throw new Error("用法：agent ask [--workdir 目录] <问题>");
+    throw new Error(
+      "用法：agent ask --model 模型标识 --compact-model 模型标识 [--workdir 目录] <问题>",
+    );
   }
   if (workdir !== undefined) {
     config.workdir = workdir;
@@ -21,10 +28,14 @@ export default async function ask(prompt, config, { workdir, locations } = {}) {
   if (!locations) {
     throw new Error("agent ask 需要数据目录");
   }
-  requireModel(config);
+  config = runConfig(config, modelId, compactModelId);
 
   const db = openDB(locations.db);
+  const tasks = createTaskManager(db, locations);
   const controller = new AbortController();
+  const stop = () => controller.abort(new DOMException("已停止", "AbortError"));
+  process.once("SIGINT", stop);
+  process.once("SIGTERM", stop);
   const timer = setTimeout(
     () => controller.abort(new DOMException("回复超时", "TimeoutError")),
     config.run_timeout * 1000,
@@ -33,15 +44,41 @@ export default async function ask(prompt, config, { workdir, locations } = {}) {
   try {
     const session = createSession(db);
     const userItem = message(prompt);
-    saveUserMessage(db, session.id, userItem);
-    const { messages, messageIds, usage } = loadContext(db, session.id);
-    const recorder = createRunRecorder(db, session.id, messageIds, messagePreview(userItem));
+    const createdAt = Date.now();
+    saveUserMessage(
+      db,
+      { sessionId: session.id },
+      userItem,
+      config.workdir,
+      createdAt,
+      [],
+      config.model_id,
+      config.compact_connection.id,
+    );
+    const { messages, messageIds, usage, metering, lastResponseAt } = loadContext(db, {
+      sessionId: session.id,
+    });
+    const recorder = createRunRecorder(
+      db,
+      { sessionId: session.id },
+      messageIds,
+      messagePreview(userItem),
+    );
     const result = await run({
-      instructions: renderPrompt(config.system, config.workdir),
+      instructions: config.system,
       messages,
       model: config.model,
+      compactModel: config.compact_connection.model,
       config,
       usage,
+      metering,
+      lastResponseAt,
+      taskContext: {
+        manager: tasks,
+        sessionId: session.id,
+        modelId: config.model_id,
+        compactModelId: config.compact_connection.id,
+      },
       signal: controller.signal,
       onEvent: (event) => {
         recorder.track(event);
@@ -71,6 +108,9 @@ export default async function ask(prompt, config, { workdir, locations } = {}) {
     return { ...result, session_id: session.id };
   } finally {
     clearTimeout(timer);
+    process.off("SIGINT", stop);
+    process.off("SIGTERM", stop);
+    await tasks.close();
     db.close();
   }
 }

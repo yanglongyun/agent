@@ -2,9 +2,14 @@ import { useNavigate } from "react-router";
 import { useEffect, useRef, useState } from "react";
 
 import { Icon } from "../icons/Icon";
-import { send, stopRun, useThread } from "./store";
+import { TasksPanel } from "../tasks/Tasks";
+import { send, stopRun, useThread, selectedModel } from "./store";
 import { useDraftSeed } from "./draft";
 import { toast } from "../overlay/toast";
+import { costLabel } from "./metering";
+import { ChatInputFrame, FilePreview } from "../components/ruixen/ChatInput";
+import { Hint } from "../overlay/Hint";
+import { isImageAttachment, validateAttachments, type UploadAttachment } from "./attachments";
 
 export function Composer() {
   const navigate = useNavigate();
@@ -14,22 +19,28 @@ export function Composer() {
     }
   };
   const [text, setText] = useState("");
-  const [images, setImages] = useState<Array<{ name: string; url: string }>>([]);
+  const [attachments, setAttachments] = useState<UploadAttachment[]>([]);
   const [reading, setReading] = useState(false);
-  const imageInput = useRef<HTMLInputElement>(null);
-  const imageVersion = useRef(0);
-  const readingImages = useRef(false);
+  const attachmentInput = useRef<HTMLInputElement>(null);
+  const attachmentVersion = useRef(0);
+  const readingAttachments = useRef(false);
   const areaRef = useRef<HTMLTextAreaElement>(null);
-  const { busy, stopping, currentId, status } = useThread();
+  const state = useThread();
+  const { busy, stopping, currentId, status, threads, connected } = state;
+  const model = selectedModel(state);
+  const current = threads.find((thread) => thread.id === currentId);
+  const cost = currentId
+    ? current
+    : { cost: { amount: 0, currency: "USD", unpriced_requests: 0 }, request_count: 0 };
   const seed = useDraftSeed();
 
   // 草稿按对话落 localStorage,重启不丢;空白草稿记在 blank 键下
   const draftKey = `agentic.draft:${currentId || "blank"}`;
   useEffect(() => {
-    imageVersion.current++;
-    readingImages.current = false;
+    attachmentVersion.current++;
+    readingAttachments.current = false;
     setReading(false);
-    setImages([]);
+    setAttachments([]);
     try {
       setText(localStorage.getItem(draftKey) || "");
     } catch {
@@ -42,7 +53,7 @@ export function Composer() {
   }, [draftKey]);
   useEffect(
     () => () => {
-      imageVersion.current++;
+      attachmentVersion.current++;
     },
     [],
   );
@@ -58,31 +69,27 @@ export function Composer() {
     }
   };
 
-  const canSend = !busy && !reading && (text.trim().length > 0 || images.length > 0);
+  const canSend =
+    connected &&
+    Boolean(model) &&
+    !busy &&
+    !reading &&
+    (text.trim().length > 0 || attachments.length > 0);
 
-  const addImages = async (files: File[]) => {
-    if (busy || readingImages.current || files.length === 0) {
+  const addAttachments = async (files: File[]) => {
+    if (busy || readingAttachments.current || files.length === 0) {
       return;
     }
-    if (images.length + files.length > 5) {
-      toast("每条消息最多发送 5 张图片");
+    const error = validateAttachments([...attachments, ...files]);
+    if (error) {
+      toast(error);
       return;
     }
-    for (const file of files) {
-      if (!["image/png", "image/jpeg", "image/gif", "image/webp"].includes(file.type)) {
-        toast("仅支持 PNG、JPEG、GIF、WebP 图片");
-        return;
-      }
-      if (file.size === 0 || file.size > 10 * 1024 * 1024) {
-        toast("图片不能为空，且每张不能超过 10 MiB");
-        return;
-      }
-    }
-    const version = imageVersion.current;
-    readingImages.current = true;
+    const version = attachmentVersion.current;
+    readingAttachments.current = true;
     setReading(true);
     try {
-      const selected: Array<{ name: string; url: string }> = [];
+      const selected: UploadAttachment[] = [];
       for (const file of files) {
         const url = await new Promise<string>((resolve, reject) => {
           const reader = new FileReader();
@@ -90,18 +97,23 @@ export function Composer() {
           reader.onerror = () => reject(new Error(`读取 ${file.name} 失败`));
           reader.readAsDataURL(file);
         });
-        selected.push({ name: file.name, url });
+        selected.push({
+          name: file.name,
+          type: file.type || "application/octet-stream",
+          size: file.size,
+          data: url,
+        });
       }
-      if (imageVersion.current === version) {
-        setImages((current) => [...current, ...selected]);
+      if (attachmentVersion.current === version) {
+        setAttachments((current) => [...current, ...selected]);
       }
     } catch (error) {
-      if (imageVersion.current === version) {
+      if (attachmentVersion.current === version) {
         toast(error instanceof Error ? error.message : "图片读取失败");
       }
     } finally {
-      if (imageVersion.current === version) {
-        readingImages.current = false;
+      if (attachmentVersion.current === version) {
+        readingAttachments.current = false;
         setReading(false);
       }
     }
@@ -109,7 +121,7 @@ export function Composer() {
 
   const autosize = (element: HTMLTextAreaElement) => {
     element.style.height = "auto";
-    element.style.height = `${Math.min(element.scrollHeight, 200)}px`;
+    element.style.height = `${Math.min(element.scrollHeight, 160)}px`;
   };
 
   // 起手卡点了 → 填进输入框(不发),光标落尾部
@@ -135,13 +147,14 @@ export function Composer() {
         text,
         null,
         showCreatedSession,
-        images.map((image) => image.url),
+        attachments.filter(isImageAttachment).map((file) => file.data),
+        attachments.filter((file) => !isImageAttachment(file)),
       )
     ) {
       return;
     }
     setText("");
-    setImages([]);
+    setAttachments([]);
     persistDraft("");
     if (areaRef.current) {
       areaRef.current.style.height = "auto";
@@ -150,116 +163,125 @@ export function Composer() {
 
   return (
     <div className="composer-wrap">
-      <div className="composer" onClick={() => areaRef.current?.focus()}>
-        {images.length > 0 && (
-          <div className="composer-images">
-            {images.map((image, index) => (
-              <div className="composer-image" key={index}>
-                <img src={image.url} alt={image.name} />
-                <button
-                  type="button"
-                  aria-label={`移除图片 ${index + 1}`}
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    setImages((current) => current.filter((_, position) => position !== index));
-                  }}
-                >
-                  ×
-                </button>
-              </div>
+      {currentId && <TasksPanel key={currentId} sessionId={currentId} busy={busy} />}
+      <ChatInputFrame
+        onFocus={() => areaRef.current?.focus()}
+        onFiles={(files) => void addAttachments(files)}
+        disabled={busy || reading}
+      >
+        {attachments.length > 0 && (
+          <div className="composer-files">
+            {attachments.map((file, index) => (
+              <FilePreview
+                key={index}
+                file={file}
+                onRemove={() =>
+                  setAttachments((current) => current.filter((_, position) => position !== index))
+                }
+              />
             ))}
           </div>
         )}
-        <textarea
-          ref={areaRef}
-          rows={2}
-          value={text}
-          placeholder="交给 Agent 一件事…"
-          onPaste={(event) => {
-            const files = Array.from(event.clipboardData.files);
-            if (files.length > 0) {
-              event.preventDefault();
-              void addImages(files);
-            }
-          }}
-          onChange={(event) => {
-            setText(event.target.value);
-            persistDraft(event.target.value);
-            autosize(event.target);
-          }}
-          onKeyDown={(event) => {
-            if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing) {
-              return;
-            }
-            event.preventDefault();
-            submit();
-          }}
-        />
-        <div className="composer-bar">
-          <div className="composer-left">
-            <input
-              ref={imageInput}
-              type="file"
-              accept="image/png,image/jpeg,image/gif,image/webp"
-              multiple
-              hidden
-              onChange={(event) => {
-                void addImages(Array.from(event.target.files || []));
-                event.target.value = "";
-              }}
-            />
+        <div className="composer-row">
+          <input
+            ref={attachmentInput}
+            type="file"
+            multiple
+            hidden
+            onChange={(event) => {
+              void addAttachments(Array.from(event.target.files || []));
+              event.target.value = "";
+            }}
+          />
+          <Hint text="添加附件 · 最多 5 个">
             <button
               type="button"
-              className="image-picker"
-              title="添加图片（最多 5 张）"
-              disabled={busy || reading || images.length === 5}
+              className="attachment-picker"
+              aria-label="添加附件"
+              disabled={busy || reading || attachments.length === 5}
               onClick={(event) => {
                 event.stopPropagation();
-                imageInput.current?.click();
+                attachmentInput.current?.click();
               }}
             >
-              <Icon name="image" size={18} />
+              <Icon name="attachment" size={20} />
             </button>
-            {images.length > 0 && <span className="model-tag">{images.length}/5</span>}
-            {reading && <span className="model-tag">读取图片…</span>}
-            {status && !status.model_ready && <span className="model-tag warn">模型尚未配置</span>}
-          </div>
-          <div className="composer-right">
-            {status?.model && (
-              <span className="model-tag clip" title={`模型:${status.model}`}>
-                {status.model}
-              </span>
-            )}
-            {busy ? (
-              <button
-                className="round stop"
-                title={stopping ? "正在停止…" : "停止"}
-                disabled={stopping}
-                onClick={(event) => {
-                  event.stopPropagation();
-                  stopRun();
-                }}
-              >
-                <Icon name="stop" size={15} />
-              </button>
-            ) : (
-              <button
-                className="round go"
-                title="发送"
-                disabled={!canSend}
-                onClick={(event) => {
-                  event.stopPropagation();
-                  submit();
-                }}
-              >
-                <Icon name="send" size={16} />
-              </button>
-            )}
-          </div>
+          </Hint>
+          <textarea
+            ref={areaRef}
+            rows={1}
+            value={text}
+            placeholder={connected ? "发消息…" : "正在重新连接…"}
+            aria-label="消息"
+            onPaste={(event) => {
+              const files = Array.from(event.clipboardData.files);
+              if (files.length > 0) {
+                event.preventDefault();
+                void addAttachments(files);
+              }
+            }}
+            onChange={(event) => {
+              setText(event.target.value);
+              persistDraft(event.target.value);
+              autosize(event.target);
+            }}
+            onKeyDown={(event) => {
+              if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing) {
+                return;
+              }
+              event.preventDefault();
+              submit();
+            }}
+          />
+          {busy ? (
+            <button
+              className="round stop"
+              title={stopping ? "正在停止…" : "停止"}
+              aria-label="停止"
+              disabled={stopping}
+              onClick={(event) => {
+                event.stopPropagation();
+                stopRun();
+              }}
+            >
+              <Icon name="stop" size={15} />
+            </button>
+          ) : (
+            <button
+              className="round go"
+              title="发送"
+              aria-label="发送"
+              disabled={!canSend}
+              onClick={(event) => {
+                event.stopPropagation();
+                submit();
+              }}
+            >
+              <Icon name="send" size={17} />
+            </button>
+          )}
         </div>
-      </div>
-      <div className="foot-note">
-        {status?.workdir ? `Agent 在 ${status.workdir} 执行命令、读写文件` : ""}
+      </ChatInputFrame>
+      <div className="composer-footer">
+        {attachments.length > 0 && <span className="foot-tag">{attachments.length}/5 个附件</span>}
+        {reading && <span className="foot-tag">读取附件…</span>}
+        <span className="foot-note clip" title={status?.workdir}>
+          {status?.workdir && (
+            <>
+              <Icon name="folder" size={12} />
+              <span className="clip">
+                {status.workdir.split(/[\\/]/).filter(Boolean).at(-1) || status.workdir}
+              </span>
+            </>
+          )}
+        </span>
+        <span
+          className="composer-cost"
+          aria-live="polite"
+          title="包含本对话、所有子任务和上下文压缩的已记录费用"
+        >
+          累计 {cost ? costLabel(cost) : "加载中…"}
+        </span>
       </div>
     </div>
   );

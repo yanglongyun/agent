@@ -10,5 +10,7 @@ export default async function post(req, res, context) {
     fail(400, "标题无效");
   }
   const session = createSession(context.db, data.title?.trim() || "");
-  return json(res, 201, { ...session, preview: "", running: false });
+  const entry = { ...session, preview: "", running: false };
+  context.events.publish({ session: entry });
+  return json(res, 201, entry);
 }

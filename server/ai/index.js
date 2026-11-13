@@ -1,6 +1,8 @@
 import { setTimeout as delay } from "node:timers/promises";
 import prepareImages from "./images.js";
+import measure from "../metering/index.js";
 import { buildClaudePayload, normalizeClaude, readClaudeStream } from "./claude.js";
+import { buildChatPayload, normalizeChat, readChatStream } from "./chat.js";
 
 export const message = (text, kind = "input_text", role = "user") => ({
   type: "message",
@@ -144,29 +146,21 @@ export async function callModel(
   signal,
 ) {
   const protocol = config.protocol || "responses";
-  if (!["responses", "anthropic-messages"].includes(protocol)) {
+  if (!["responses", "chat-completions", "anthropic-messages"].includes(protocol)) {
     const error = new Error(`Unsupported model protocol: ${protocol}`);
     error.code = "invalid_request";
     throw error;
   }
   const input = await prepareImages(messages, config.images_dir, signal);
-  const payload =
-    protocol === "anthropic-messages"
-      ? buildClaudePayload({
-          instructions,
-          messages: input,
-          model,
-          config,
-          tools,
-          stream: Boolean(onEvent),
-        })
-      : {
-          instructions,
-          input,
-          model,
-          tools,
-          store: false,
-        };
+  let payload;
+  const request = { instructions, messages: input, model, config, tools, stream: Boolean(onEvent) };
+  if (protocol === "anthropic-messages") {
+    payload = buildClaudePayload(request);
+  } else if (protocol === "chat-completions") {
+    payload = buildChatPayload(request);
+  } else {
+    payload = { instructions, input, model, tools, store: false };
+  }
   const headers =
     protocol === "anthropic-messages"
       ? {
@@ -222,6 +216,20 @@ export async function callModel(
             signal,
             source: config.url,
             model,
+            request: payload,
+            onActivity: () => {
+              delivered = true;
+            },
+            onEvent: async (event) => {
+              delivered = true;
+              await onEvent(event);
+            },
+          });
+        } else if (protocol === "chat-completions") {
+          result = await readChatStream(response.body, {
+            signal,
+            source: config.url,
+            model,
             onActivity: () => {
               delivered = true;
             },
@@ -239,7 +247,9 @@ export async function callModel(
       } else {
         result = JSON.parse((await boundedBody(response, 16 * 1024 * 1024)).toString());
         if (protocol === "anthropic-messages") {
-          result = normalizeClaude(result, { source: config.url, model });
+          result = normalizeClaude(result, { source: config.url, model, request: payload });
+        } else if (protocol === "chat-completions") {
+          result = normalizeChat(result, { source: config.url, model });
         }
       }
       if (result.error || result.status !== "completed" || !Array.isArray(result.output)) {
@@ -251,7 +261,15 @@ export async function callModel(
         }
         throw error;
       }
-      return result;
+      return {
+        ...result,
+        metering: measure(result.usage, {
+          protocol,
+          model,
+          url: config.url,
+          serviceTier: result.service_tier,
+        }),
+      };
     } catch (error) {
       signal?.throwIfAborted();
       // 只有尚未交付内容的网络失败、断流和 429/5xx 可以重试。

@@ -24,7 +24,10 @@ test("非流式读取完整响应，缺少完成状态或流式响应类型错�
       }),
   );
   const config = { url: `http://127.0.0.1:${server.address().port}`, key: "test" };
-  assert.deepEqual(await callModel("指令", [message("测试")], "fixture", config), final);
+  assert.deepEqual(await callModel("指令", [message("测试")], "fixture", config), {
+    ...final,
+    metering: null,
+  });
   output = { output: [] };
   await assert.rejects(callModel("指令", [message("测试")], "fixture", config), {
     code: "invalid_response",
@@ -119,7 +122,7 @@ test("真实 HTTP 模型请求、协议字段与流式解析联通", async (t) =
   );
   assert.equal(requests, 1);
   assert.equal(text, "你好");
-  assert.deepEqual(result, final);
+  assert.deepEqual(result, { ...final, metering: null });
 });
 
 test("正文和思考增量分别转发，参数碎片不发，最终 output 保持原样", async () => {
@@ -194,7 +197,7 @@ test("HTTP 503 重试前通知，成功后返回完整响应", async (t) => {
   assert.deepEqual(received, [
     { type: "retry", attempt: 1, maxRetries: 2, delayMs: 2000, error: "API HTTP 503：暂时不可用" },
   ]);
-  assert.deepEqual(result, final);
+  assert.deepEqual(result, { ...final, metering: null });
 });
 
 test("重试耗尽只产生一个终止 error 和 done", async (t) => {

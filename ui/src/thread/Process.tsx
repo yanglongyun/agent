@@ -7,6 +7,7 @@ import { Icon } from "../icons/Icon";
 import { fmtArgs, fmtResult, isFailed, renderMd, toolMeta, formatDuration } from "./format";
 import { useThread } from "./store";
 import type { Row } from "./thread";
+import { Usage } from "./Usage";
 
 // 展开状态属于当前会话，列表分组和刷新不会丢失。
 function useExpanded(key: string): [boolean, (open: boolean) => void] {
@@ -18,7 +19,7 @@ function useExpanded(key: string): [boolean, (open: boolean) => void] {
 
 /** 一轮里按序排布的条目:过程(思考 / 工具)与中间文本。 */
 export type TurnEntry = {
-  kind: "think" | "tool" | "text";
+  kind: "think" | "tool" | "text" | "usage";
   row: Row;
 };
 
@@ -42,7 +43,7 @@ export function ThinkItem({ row, compact }: { row: Row; compact?: boolean }) {
   const thinking = Boolean(row.streaming && !row.content);
   return (
     <div className={`step${open ? " open" : ""}${compact ? " sm" : ""}`}>
-      <button className="step-head" onClick={() => setOpen(!open)}>
+      <button className="step-head" aria-expanded={open} onClick={() => setOpen(!open)}>
         <StepIcon icon={<Icon name="spark" size={compact ? 12 : 14} />} />
         <span className="step-label">
           <i className={thinking ? "sheen" : undefined}>{thinking ? "思考中" : "已思考"}</i>
@@ -66,7 +67,12 @@ export function ToolItem({ row, compact }: { row: Row; compact?: boolean }) {
   const failed = isFailed(row);
   return (
     <div className={`step${open ? " open" : ""}${compact ? " sm" : ""}${failed ? " faded" : ""}`}>
-      <button className="step-head" disabled={running} onClick={() => !running && setOpen(!open)}>
+      <button
+        className="step-head"
+        aria-expanded={open}
+        disabled={running}
+        onClick={() => !running && setOpen(!open)}
+      >
         <StepIcon icon={meta.icon} />
         <span className="step-label">
           <i className={running ? "sheen" : undefined}>{meta.label}</i>
@@ -96,9 +102,12 @@ export function ToolItem({ row, compact }: { row: Row; compact?: boolean }) {
 
 /* ── 相邻已完成工具 ≥2 收成一行摘要 ── */
 
-type GroupKind = "create" | "edit" | "read" | "exec";
+type GroupKind = "create" | "edit" | "read" | "exec" | "delegate" | "task";
 
 function groupKind(row: Row): GroupKind {
+  if (row.name === "agent") {
+    return row.args?.action === "start" ? "delegate" : "task";
+  }
   if (row.name === "read") {
     return "read";
   }
@@ -113,7 +122,7 @@ function groupKind(row: Row): GroupKind {
 
 /** 文件类按去重后的路径数计,执行类按次数计。 */
 function groupCount(rows: Row[], kind: GroupKind) {
-  if (kind === "exec") {
+  if (["exec", "delegate", "task"].includes(kind)) {
     return rows.length;
   }
   const paths = new Set<string>();
@@ -128,11 +137,13 @@ const GROUP_TEXT: Record<GroupKind, (n: number) => string> = {
   edit: (n) => `修改了 ${n} 个文件`,
   read: (n) => `读取了 ${n} 个文件`,
   exec: (n) => `执行了 ${n} 条命令`,
+  delegate: (n) => `启动了 ${n} 个子任务`,
+  task: (n) => `执行了 ${n} 次任务操作`,
 };
 
 function groupSummary(rows: Row[]) {
   const parts: string[] = [];
-  for (const kind of ["create", "edit", "read", "exec"] as GroupKind[]) {
+  for (const kind of ["create", "edit", "read", "exec", "delegate", "task"] as GroupKind[]) {
     const matching = rows.filter((row) => groupKind(row) === kind);
     if (matching.length) {
       parts.push(GROUP_TEXT[kind](groupCount(matching, kind)));
@@ -156,7 +167,7 @@ export function ToolGroup({ rows }: { rows: Row[] }) {
   const faded = rows.every(isFailed);
   return (
     <div className={`step${open ? " open" : ""}${faded ? " faded" : ""}`}>
-      <button className="step-head" onClick={() => setOpen(!open)}>
+      <button className="step-head" aria-expanded={open} onClick={() => setOpen(!open)}>
         <StepIcon icon={groupIcon(rows)} />
         <span className="step-label">
           <i>{groupSummary(rows)}</i>
@@ -190,7 +201,7 @@ export function TurnFold({
     durationMs != null && durationMs > 0 ? `已工作 ${formatDuration(durationMs)}` : "过程";
   return (
     <div className={`fold${open ? " open" : ""}`}>
-      <button className="fold-head" onClick={() => setOpen(!open)}>
+      <button className="fold-head" aria-expanded={open} onClick={() => setOpen(!open)}>
         <span className="fold-row">
           <span className="fold-label">{label}</span>
           <span className="fold-chev">
@@ -238,7 +249,9 @@ export function TurnEntries({ items, inFold }: { items: TurnEntry[]; inFold?: bo
       continue;
     }
     flushTools();
-    if (item.kind === "think") {
+    if (item.kind === "usage" && item.row.usageRecord) {
+      nodes.push(<Usage key={item.row.key} records={[item.row.usageRecord]} />);
+    } else if (item.kind === "think") {
       nodes.push(<ThinkItem key={`t:${item.row.key}`} row={item.row} />);
     } else {
       nodes.push(
@@ -271,7 +284,11 @@ export function TurnEntries({ items, inFold }: { items: TurnEntry[]; inFold?: bo
 export function Working({ text = "正在工作…" }: { text?: string }) {
   return (
     <div className="working">
-      <span className="orbit" />
+      <span className="typing" aria-hidden="true">
+        <i />
+        <i />
+        <i />
+      </span>
       <span className="working-text sheen">{text}</span>
     </div>
   );

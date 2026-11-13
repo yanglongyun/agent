@@ -158,11 +158,12 @@ server → api → sessions → [id] → messages → post.js
 
 流式生成时收到的文字增量，用来让页面及时显示。等模型完整返回，再使用完整 output 对象保存消息，不拿增量重新拼造模型对象。
 
-数据库先用三张表：
+数据库使用四张表：
 
 - `sessions`：会话 ID、标题和时间。
 - `messages`：所属会话、消息块 `item`、实际用量 `usage` 和时间。
 - `compactions`：压缩摘要，以及摘要覆盖到的消息位置。
+- `metering`：每次模型请求的计量与价格快照，通过消息或摘要 ID 关联。
 
 其中，`item` 保存消息对象的 JSON，`usage` 保存模型实际返回的用量。
 
@@ -209,10 +210,10 @@ error                 终止性错误
 判断依据是：
 
 ```text
-上一次模型响应的 usage.total_tokens >= 配置的 compact_at
+上一次模型响应的实际上下文 token 数 >= 配置的 compact_at
 ```
 
-新一轮用户输入时，业务接口从数据库读取最近一次模型输出的 usage；工具执行后继续循环时，使用刚刚收到的 usage。
+新一轮用户输入时，业务接口从数据库读取最近一次模型输出的原始 usage 和计量信息；工具执行后继续循环时，使用刚刚收到的用量。Responses、Chat Completions 读取 total_tokens，Claude 在独立计量模块中对原生输入、缓存和输出求和。
 
 这里不累加历史请求的用量，也不根据文字长度估算。
 

@@ -252,7 +252,7 @@ response.completed
 - `reasoning_text` 可作为内容类型出现；事件名是 `response.reasoning_text.delta/done`。
 - `function_call_output` 是下一次请求的输入项，不是一个 SSE 事件名。
 - 此参考页没有单独列出 `response.cancelled` 事件；不能把 response 的所有 status 值机械拼成事件名。
-- `[DONE]` 不是 Responses 的 JSON 事件，本项目不支持该标记，只以标准结束事件判断结果。
+- `[DONE]` 不是 Responses 的 JSON 事件，Responses 适配器不使用该标记，只以标准结束事件判断结果；Chat Completions 适配器独立处理 `[DONE]`。
 - HTTP 400 可能直接返回错误 JSON，而不是 SSE；先检查 HTTP 状态及 Content-Type。
 - 表里的 `.done` / `.completed` 不能互相替换，必须按完整 type 匹配。
 - 官方将来可能新增事件；本清单的“全部”以本次核对的 59 个参考页条目为边界。

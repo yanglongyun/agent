@@ -1,6 +1,6 @@
 import { useState } from "react";
 
-import { Mark } from "../icons/Icon";
+import { Icon, Mark } from "../icons/Icon";
 import { login } from "../lib/auth";
 
 export function Login() {
@@ -27,7 +27,7 @@ export function Login() {
   return (
     <div className="login-page">
       <form
-        className="sheet login-card"
+        className="login-card"
         onSubmit={(event) => {
           event.preventDefault();
           void submit();
@@ -37,26 +37,48 @@ export function Login() {
           <Mark size={34} />
           <span>agentic</span>
         </div>
-        <p className="sheet-note">
-          请输入访问令牌。令牌在安装时输出,也可在服务器上执行 <code>agent token</code> 查看。
-        </p>
-        <input
-          className="field-input mono"
-          type="password"
-          autoFocus
-          autoComplete="off"
-          placeholder="访问令牌"
-          value={token}
-          onChange={(event) => setToken(event.target.value)}
-        />
-        {error && <div className="sheet-error">{error}</div>}
+        <h1>连接工作区</h1>
+        <p className="login-intro">使用访问令牌登录，继续你的工作。</p>
+        <label className="login-label">
+          访问令牌
+          <input
+            className="field-input mono"
+            type="password"
+            autoFocus
+            autoComplete="off"
+            placeholder="访问令牌"
+            value={token}
+            onChange={(event) => setToken(event.target.value)}
+          />
+        </label>
+        {error && (
+          <div className="sheet-error" role="alert">
+            {error}
+          </div>
+        )}
         <button
           className="btn btn-accent login-submit"
           type="submit"
           disabled={!token.trim() || busy}
         >
-          {busy ? "登录中…" : "登录"}
+          {busy ? (
+            <>
+              <Icon name="loading" className="spin" size={16} />
+              正在连接…
+            </>
+          ) : (
+            <>
+              连接工作区
+              <Icon name="arrow" size={16} />
+            </>
+          )}
         </button>
+        <details className="login-help">
+          <summary>在哪里找到访问令牌？</summary>
+          <p>
+            令牌在安装时显示，也可以在服务器上执行 <code>agent token</code> 查看。
+          </p>
+        </details>
       </form>
     </div>
   );

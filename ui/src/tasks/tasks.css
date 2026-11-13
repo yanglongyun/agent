@@ -1,0 +1,263 @@
+/* 与输入框叠成两层：托盘略内收，底边由前面的输入框遮住。 */
+.tasks-panel {
+  position: relative;
+  z-index: 0;
+  width: calc(100% - 36px);
+  max-width: calc(var(--content-width) - 36px);
+  margin: 0 auto -18px;
+  padding-bottom: 18px;
+  border: 1px solid var(--edge);
+  border-bottom: 0;
+  border-radius: 16px 16px 0 0;
+  background: var(--surface-side);
+  overflow: hidden;
+  max-height: min(320px, 42vh);
+  font-size: 13px;
+}
+.composer-wrap .composer {
+  position: relative;
+  z-index: 1;
+}
+.tasks-panel summary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 42px;
+  padding: 0 12px;
+  cursor: pointer;
+  list-style: none;
+  color: var(--text-2);
+}
+.tasks-panel summary::-webkit-details-marker {
+  display: none;
+}
+.tasks-panel summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -3px;
+  border-radius: 12px;
+}
+.task-tray-heading {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  flex: none;
+  font-weight: 550;
+}
+.task-tray-count {
+  display: inline-grid;
+  place-items: center;
+  min-width: 19px;
+  height: 19px;
+  padding: 0 5px;
+  border-radius: 7px;
+  background: var(--fill-2);
+  color: var(--text-3);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+.task-tray-info {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: right;
+  color: var(--text-3);
+  font-size: 13px;
+}
+.task-tray-dot {
+  width: 6px;
+  height: 6px;
+  margin: 0 4px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+.task-tray-chevron {
+  flex: none;
+  color: var(--text-3);
+  transform: rotate(-90deg);
+}
+.tasks-panel[open] .task-tray-chevron {
+  transform: rotate(90deg);
+}
+.tasks-panel ul {
+  list-style: none;
+  padding: 4px 7px;
+  margin: 0;
+  border-top: 1px solid var(--edge-soft);
+  max-height: calc(min(320px, 42vh) - 60px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.tasks-panel li {
+  padding: 9px 8px;
+  border-radius: 9px;
+}
+.tasks-panel li:hover,
+.tasks-panel li:focus-within {
+  background: var(--hover);
+}
+.task-open {
+  width: 100%;
+  text-align: left;
+  display: flex;
+  gap: 16px;
+  align-items: baseline;
+  text-decoration: none;
+  color: var(--text-1);
+}
+.task-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.task-status {
+  flex: none;
+  color: var(--text-3);
+  font-size: 13px;
+}
+.task-status.running {
+  color: var(--ok);
+}
+.task-status.failed,
+.task-status.interrupted {
+  color: var(--danger);
+}
+.tasks-panel small {
+  display: block;
+  color: var(--text-3);
+  margin-top: 4px;
+  font-size: 13px;
+}
+.tasks-note {
+  width: 100%;
+  max-width: var(--content-width);
+  margin: 0 auto 8px;
+  font-size: 13px;
+  color: var(--text-3);
+}
+.tasks-tray-error {
+  padding: 0 14px;
+  color: var(--danger);
+}
+.task-detail.sheet {
+  width: min(740px, calc(100vw - 32px));
+}
+.task-detail .sheet-body {
+  overscroll-behavior: contain;
+}
+.task-description {
+  margin: 0;
+  font-size: 15px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: 1.65;
+  max-height: 180px;
+  overflow: auto;
+}
+.task-facts {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 18px;
+  margin: 18px 0;
+  font-size: 13px;
+  color: var(--text-3);
+}
+.task-facts > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.task-parent {
+  color: var(--ok);
+  font-size: 13px;
+  margin-bottom: 16px;
+}
+.task-state {
+  margin-right: auto;
+  color: var(--text-3);
+  font-size: 13px;
+}
+.task-state.running {
+  color: var(--ok);
+}
+.task-state.completed {
+  color: var(--ok);
+}
+.task-state.failed,
+.task-state.interrupted,
+.task-stop {
+  color: var(--danger);
+}
+.task-inherited {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin: 24px 0;
+  font-size: 13px;
+  color: var(--text-3);
+}
+.task-inherited input {
+  accent-color: var(--ok);
+}
+.task-transcript {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding-bottom: 40px;
+}
+.task-message {
+  min-width: 0;
+}
+.task-message > small {
+  display: block;
+  margin-bottom: 8px;
+  color: var(--text-3);
+  font-size: 13px;
+}
+.task-message img {
+  display: block;
+  max-width: 100%;
+  max-height: 480px;
+  border-radius: 10px;
+}
+.process-command,
+.process-output {
+  padding: 14px;
+  border: 1px solid var(--edge);
+  border-radius: 10px;
+  background: var(--surface-side);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1.65;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.process-output {
+  min-height: 120px;
+  max-height: 360px;
+  overflow: auto;
+}
+.process-input {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 20px;
+  font-size: 13px;
+  color: var(--text-2);
+}
+.process-input textarea {
+  padding: 10px 12px;
+  border: 1px solid var(--edge);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--text-1);
+  resize: vertical;
+}
+.process-input > div {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}

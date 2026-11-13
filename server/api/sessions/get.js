@@ -1,6 +1,8 @@
 import { json } from "../http.js";
+import { messagePreview } from "../../session.js";
+import { withCost } from "../../metering/index.js";
 
-export default async function get(req, res, context) {
+export function readSessions(context) {
   const rows = context.db
     .prepare(
       `
@@ -9,21 +11,27 @@ export default async function get(req, res, context) {
         SELECT item FROM messages
         WHERE session_id = sessions.id
         ORDER BY id LIMIT 1
-      ) AS first
+      ) AS first,
+      (SELECT meta FROM messages WHERE session_id = sessions.id ORDER BY id LIMIT 1) AS first_meta
     FROM sessions
     ORDER BY updated_at DESC
   `,
     )
     .all();
 
-  const sessions = rows.map(({ first, ...session }) => {
-    const content = first ? JSON.parse(first).content : [];
-    let preview = content.map((part) => part.text || "").join("");
-    preview = preview.replace(/\s+/g, " ").slice(0, 60);
-    if (!preview && content.some((part) => part.type === "input_image")) {
-      preview = "[图片]";
-    }
-    return { ...session, preview, running: context.activeReplies.has(session.id) };
+  const sessions = rows.map(({ first, first_meta, ...session }) => {
+    const preview = first
+      ? messagePreview(JSON.parse(first), JSON.parse(first_meta || "null"))
+      : "";
+    return {
+      ...withCost(session),
+      preview,
+      running: Boolean(context.replies.get(session.id)?.running),
+    };
   });
-  return json(res, 200, { sessions });
+  return sessions;
+}
+
+export default function get(req, res, context) {
+  return json(res, 200, { sessions: readSessions(context) });
 }

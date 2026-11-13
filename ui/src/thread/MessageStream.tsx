@@ -5,31 +5,38 @@ import { useNavigate } from "react-router";
 //   · 轮还在进行中(或没有最终文本,比如中途停掉)→ 平铺,过程依次展示;
 //   · 用户消息是右侧灰底气泡;助理最终文本无气泡全宽 markdown,
 //     悬停出现复制行,最后一条常显。
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import { Icon, Mark, type IconName } from "../icons/Icon";
 import { copyText } from "../lib/clipboard";
 import { TurnEntries, TurnFold, Working, type TurnEntry } from "./Process";
 import { dayLabel, renderMd } from "./format";
-import { loadOlder, retrySend, useThread } from "./store";
+import { branchThread, loadOlder, retrySend, useThread } from "./store";
 import { seedDraft } from "./draft";
-import { buildRows, type Row } from "./thread";
+import { buildRows, type Row, type UsageRecord } from "./thread";
+import { Usage } from "./Usage";
+import { AttachmentInfo } from "./AttachmentInfo";
+import { Hint } from "../overlay/Hint";
 
 /** 空白对话的起手式:每一条都是这个 Agent 真做得到的事。点了填进输入框,不直接发。 */
 const STARTERS: Array<{
   icon: IconName;
   text: string;
+  label: string;
 }> = [
   {
     icon: "doc",
+    label: "梳理项目",
     text: "看一下当前目录的结构,总结每个目录是干什么的",
   },
   {
     icon: "terminal",
+    label: "检查环境",
     text: "检查这台机器的负载、内存和磁盘使用情况,有问题告诉我",
   },
   {
     icon: "pen",
+    label: "整理文件",
     text: "把最近一天系统日志里的错误整理出来",
   },
 ];
@@ -45,6 +52,7 @@ type Block =
       key: string;
       row: Row;
       final?: boolean;
+      usage?: UsageRecord[];
     }
   | {
       kind: "flat";
@@ -65,18 +73,91 @@ export function MessageStream() {
       navigate(`/sessions/${id}`, { replace: true });
     }
   };
-  const { messages, compactions, notes, busy, ready, hasMore, loadingOlder, viewSeq, currentId } =
-    useThread();
+  const {
+    messages,
+    compactions,
+    notes,
+    busy,
+    ready,
+    hasMore,
+    loadingOlder,
+    viewSeq,
+    currentId,
+    branchingMessageId,
+  } = useThread();
   const rows = useMemo(
     () => [...buildRows(messages, compactions, busy), ...notes],
     [messages, compactions, busy, notes],
   );
   const scrollRef = useRef<HTMLElement>(null);
+  const [atBottom, setAtBottom] = useState(true);
   const innerRef = useRef<HTMLDivElement>(null);
 
   // 「粘底」:贴着底部时任何高度变化都跟着走;用户上滚就不打扰,滚回底部重新粘上
   const stick = useRef(true);
-  const restoreFromTop = useRef(0);
+  const restoreFromTop = useRef<{
+    sessionId: string;
+    firstId: number;
+    node: Element | null;
+    offset: number;
+    height: number;
+    top: number;
+  } | null>(null);
+
+  const loadEarlier = () => {
+    const element = scrollRef.current;
+    const first = messages.find((message) => message.id > 0);
+    if (!element || !first || !hasMore || useThread.getState().loadingOlder) {
+      return;
+    }
+    const node =
+      Array.from(innerRef.current?.children || []).find(
+        (child) =>
+          child.matches(".msg, .day-chip, .compaction") &&
+          child.getBoundingClientRect().bottom > element.getBoundingClientRect().top,
+      ) || null;
+    const anchor = {
+      sessionId: currentId,
+      firstId: first.id,
+      node,
+      offset: node?.getBoundingClientRect().top || 0,
+      height: element.scrollHeight,
+      top: element.scrollTop,
+    };
+    stick.current = false;
+    restoreFromTop.current = anchor;
+    void loadOlder().finally(() => {
+      // 失败或空页没有插入历史，不留下会影响下一次滚动的恢复记录。
+      if (
+        restoreFromTop.current === anchor &&
+        useThread.getState().messages.find((message) => message.id > 0)?.id === anchor.firstId
+      ) {
+        restoreFromTop.current = null;
+      }
+    });
+  };
+
+  useLayoutEffect(() => {
+    const anchor = restoreFromTop.current;
+    const element = scrollRef.current;
+    if (!anchor || !element) {
+      return;
+    }
+    if (anchor.sessionId !== currentId) {
+      restoreFromTop.current = null;
+      return;
+    }
+    if (messages.find((message) => message.id > 0)?.id === anchor.firstId) {
+      return;
+    }
+    // 仅在更早消息实际插入后恢复，流式增量和加载提示不会提前消耗锚点。
+    if (anchor.node?.isConnected && element.contains(anchor.node)) {
+      element.scrollTop += anchor.node.getBoundingClientRect().top - anchor.offset;
+    } else {
+      element.scrollTop = anchor.top + element.scrollHeight - anchor.height;
+    }
+    restoreFromTop.current = null;
+  }, [currentId, messages]);
 
   const blocks = useMemo<Block[]>(() => {
     const output: Block[] = [];
@@ -122,7 +203,12 @@ export function MessageStream() {
         });
       } else {
         const final = list[finalIndex];
-        const process = list.filter((_, index) => index !== finalIndex);
+        const process = list.filter(
+          (entry, index) => index !== finalIndex && entry.kind !== "usage",
+        );
+        const usage = list
+          .filter((entry) => entry.kind === "usage" && entry.row.usageRecord)
+          .map((entry) => entry.row.usageRecord!);
         if (process.length) {
           const durationMs =
             turnStartAt && turnLastAt && turnLastAt > turnStartAt ? turnLastAt - turnStartAt : null;
@@ -138,6 +224,7 @@ export function MessageStream() {
           key: final.row.key,
           row: final.row,
           final: true,
+          usage,
         });
       }
       turnStartAt = undefined;
@@ -173,6 +260,10 @@ export function MessageStream() {
           row,
         });
         noteAt(row.at);
+        continue;
+      }
+      if (row.kind === "usage") {
+        entries.push({ kind: "usage", row });
         continue;
       }
       if (row.kind === "assistant") {
@@ -236,9 +327,9 @@ export function MessageStream() {
       return;
     }
     stick.current = element.scrollHeight - element.scrollTop - element.clientHeight < 80;
+    setAtBottom(stick.current);
     if (element.scrollTop < 60 && hasMore && !loadingOlder) {
-      restoreFromTop.current = element.scrollHeight; // 记住旧高度,加载后保持视口
-      void loadOlder();
+      loadEarlier();
     }
   };
 
@@ -253,8 +344,8 @@ export function MessageStream() {
     element.scrollTop = element.scrollHeight;
     const observer = new ResizeObserver(() => {
       if (restoreFromTop.current) {
-        element.scrollTop = element.scrollHeight - restoreFromTop.current;
-        restoreFromTop.current = 0;
+        restoreFromTop.current.height = element.scrollHeight;
+        restoreFromTop.current.top = element.scrollTop;
       } else if (stick.current) {
         element.scrollTop = element.scrollHeight;
       }
@@ -266,7 +357,8 @@ export function MessageStream() {
   // 切对话 / 自己发消息:强制回底并重新粘上
   useEffect(() => {
     stick.current = true;
-    restoreFromTop.current = 0;
+    setAtBottom(true);
+    restoreFromTop.current = null;
     const element = scrollRef.current;
     if (element) {
       element.scrollTop = element.scrollHeight;
@@ -288,120 +380,207 @@ export function MessageStream() {
   }, [ready, hasMore, loadingOlder, rows.length]);
 
   return (
-    <main ref={scrollRef} className="stream" onScroll={onScroll}>
-      {/* key 按对话换:换对话 = 整棵子树重挂,清除上一会话的组件状态 */}
-      <div key={currentId || "__draft__"} ref={innerRef} className="stream-inner">
-        {loadingOlder && <span className="chip">加载更早的消息…</span>}
-        {!loadingOlder && hasMore && rows.length > 0 && (
-          <button className="chip chip-btn" onClick={() => void loadOlder()}>
-            查看更早的消息
-          </button>
-        )}
+    <div className="stream-region">
+      <main ref={scrollRef} className="stream" onScroll={onScroll}>
+        {/* key 按对话换:换对话 = 整棵子树重挂,清除上一会话的组件状态 */}
+        <div key={currentId || "__draft__"} ref={innerRef} className="stream-inner">
+          {loadingOlder && <span className="chip">加载更早的消息…</span>}
+          {!loadingOlder && hasMore && rows.length > 0 && (
+            <button className="chip chip-btn" onClick={loadEarlier}>
+              查看更早的消息
+            </button>
+          )}
 
-        {!ready && !rows.length && <span className="chip">正在打开对话…</span>}
+          {!ready && !rows.length && <span className="chip">正在打开对话…</span>}
 
-        {ready && !rows.length && (
-          <div className="blank float-in">
-            <Mark size={60} />
-            <div className="blank-title">这次做点什么?</div>
-            <div className="starters">
-              {STARTERS.map((starter) => (
-                <button
-                  key={starter.text}
-                  className="starter"
-                  onClick={() => seedDraft(starter.text)}
-                >
-                  <span className="starter-ic">
-                    <Icon name={starter.icon} size={15} />
-                  </span>
-                  <span className="starter-text">{starter.text}</span>
-                </button>
-              ))}
+          {ready && !rows.length && (
+            <div className="blank float-in">
+              <Mark size={84} />
+              <h1 className="blank-title">有什么可以帮你？</h1>
+              <p className="blank-description">从一个问题、一份文件，或一个想法开始。</p>
+              <div className="starters">
+                {STARTERS.map((starter) => (
+                  <button
+                    key={starter.text}
+                    className="starter"
+                    onClick={() => seedDraft(starter.text)}
+                  >
+                    <span className="starter-ic">
+                      <Icon name={starter.icon} size={15} />
+                    </span>
+                    <span className="starter-text">{starter.label}</span>
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
-        )}
+          )}
 
-        {blocks.map((block) => {
-          if (block.kind === "day") {
+          {blocks.map((block) => {
+            if (block.kind === "day") {
+              return (
+                <span key={block.key} className="day-chip">
+                  {block.label}
+                </span>
+              );
+            }
+            if (block.kind === "flat") {
+              return <TurnEntries key={block.key} items={block.items} />;
+            }
+            if (block.kind === "turn") {
+              return (
+                <div key={block.key} className="msg agent">
+                  <TurnFold id={block.key} durationMs={block.durationMs}>
+                    <TurnEntries items={block.items} inFold />
+                  </TurnFold>
+                </div>
+              );
+            }
+
+            const row = block.row;
+            if (row.kind === "user") {
+              return (
+                <div key={block.key} className={`msg mine float-in`}>
+                  <div className="bubble">
+                    {row.attachments && row.attachments.length > 0 && (
+                      <div className="message-attachments">
+                        {row.attachments.map((file, index) =>
+                          file.url ? (
+                            <a
+                              key={index}
+                              className="attachment-card"
+                              href={file.url}
+                              download={file.name}
+                              title={`下载 ${file.name}`}
+                            >
+                              <AttachmentInfo file={file} />
+                            </a>
+                          ) : (
+                            <span key={index} className="attachment-card">
+                              <AttachmentInfo file={file} />
+                            </span>
+                          ),
+                        )}
+                      </div>
+                    )}
+                    {row.images && row.images.length > 0 && (
+                      <div className="message-files">
+                        {row.images.map((src, index) => (
+                          <img key={index} src={src} alt="图片" />
+                        ))}
+                      </div>
+                    )}
+                    {row.content}
+                  </div>
+                  {row.sending && <div className="send-state">发送中…</div>}
+                  {!row.sending && row.failed && (
+                    <button
+                      className="send-retry"
+                      onClick={() => void retrySend(row, showCreatedSession)}
+                    >
+                      发送失败,点击重试
+                    </button>
+                  )}
+                </div>
+              );
+            }
+            if (row.kind === "assistant") {
+              const always = block.key === lastFinalKey && !busy;
+              const messageId = row.messageId;
+              return (
+                <div key={block.key} className={`msg agent float-in`}>
+                  <span className="msg-avatar">
+                    <Mark size={28} />
+                  </span>
+                  <div className="md" dangerouslySetInnerHTML={{ __html: renderMd(row.content) }} />
+                  <Usage records={block.usage || []} />
+                  <div className={`act-row${always ? " always" : ""}`}>
+                    <Hint text="复制回答">
+                      <button
+                        className="act"
+                        aria-label="复制回答"
+                        onClick={() => void copyText(row.content)}
+                      >
+                        <Icon name="copy" size={16} />
+                      </button>
+                    </Hint>
+                    {messageId !== undefined && messageId > 0 && !row.streaming && (
+                      <Hint
+                        text={
+                          branchingMessageId === messageId ? "正在创建分支…" : "从此回答创建分支"
+                        }
+                      >
+                        <button
+                          className="act"
+                          aria-label="分支"
+                          aria-busy={branchingMessageId === messageId}
+                          disabled={busy || branchingMessageId > 0}
+                          onClick={async () => {
+                            const id = await branchThread(messageId);
+                            if (id) {
+                              navigate(`/sessions/${id}`);
+                            }
+                          }}
+                        >
+                          <Icon name="branch" size={16} />
+                        </button>
+                      </Hint>
+                    )}
+                  </div>
+                </div>
+              );
+            }
+            if (row.code === "compacted" && row.content) {
+              return (
+                <details key={block.key} className="compaction">
+                  <summary>已压缩早期对话</summary>
+                  <div className="md" dangerouslySetInnerHTML={{ __html: renderMd(row.content) }} />
+                  {row.usageRecord && <Usage records={[row.usageRecord]} />}
+                </details>
+              );
+            }
+            if (row.code === "error") {
+              return (
+                <div key={block.key} className="stream-error" role="alert">
+                  <Icon name="alert" size={18} />
+                  <div>
+                    <strong>本次回复未完成</strong>
+                    <p>{row.content}</p>
+                  </div>
+                </div>
+              );
+            }
             return (
-              <span key={block.key} className="day-chip">
-                {block.label}
+              <span key={block.key} className="chip">
+                {row.code === "stopped" ? "已停止" : row.content}
               </span>
             );
-          }
-          if (block.kind === "flat") {
-            return <TurnEntries key={block.key} items={block.items} />;
-          }
-          if (block.kind === "turn") {
-            return (
-              <div key={block.key} className="msg agent">
-                <TurnFold id={block.key} durationMs={block.durationMs}>
-                  <TurnEntries items={block.items} inFold />
-                </TurnFold>
-              </div>
-            );
-          }
+          })}
 
-          const row = block.row;
-          if (row.kind === "user") {
-            return (
-              <div key={block.key} className={`msg mine float-in`}>
-                <div className="bubble">
-                  {row.images && row.images.length > 0 && (
-                    <div className="message-files">
-                      {row.images.map((src, index) => (
-                        <img key={index} src={src} alt="图片" />
-                      ))}
-                    </div>
-                  )}
-                  {row.content}
-                </div>
-                {row.sending && <div className="send-state">发送中…</div>}
-                {!row.sending && row.failed && (
-                  <button
-                    className="send-retry"
-                    onClick={() => void retrySend(row, showCreatedSession)}
-                  >
-                    发送失败,点击重试
-                  </button>
-                )}
-              </div>
-            );
-          }
-          if (row.kind === "assistant") {
-            const always = block.key === lastFinalKey && !busy;
-            return (
-              <div key={block.key} className={`msg agent float-in`}>
-                <div className="md" dangerouslySetInnerHTML={{ __html: renderMd(row.content) }} />
-                <div className={`act-row${always ? " always" : ""}`}>
-                  <button className="act" title="复制" onClick={() => copyText(row.content)}>
-                    <Icon name="copy" size={14} />
-                  </button>
-                </div>
-              </div>
-            );
-          }
-          if (row.code === "compacted" && row.content) {
-            return (
-              <details key={block.key} className="compaction">
-                <summary>已压缩早期对话</summary>
-                <div className="md" dangerouslySetInnerHTML={{ __html: renderMd(row.content) }} />
-              </details>
-            );
-          }
-          return (
-            <span key={block.key} className={`chip${row.code === "error" ? " chip-bad" : ""}`}>
-              {row.code === "stopped" ? "已停止" : row.content}
-            </span>
-          );
-        })}
-
-        {showWorking && (
-          <div className="msg agent float-in">
-            <Working />
-          </div>
-        )}
-      </div>
-    </main>
+          {showWorking && (
+            <div className="msg agent float-in">
+              <Working />
+            </div>
+          )}
+        </div>
+      </main>
+      {!atBottom && rows.length > 0 && (
+        <Hint text="回到最新消息">
+          <button
+            className="scroll-latest"
+            aria-label="回到最新消息"
+            onClick={() => {
+              stick.current = true;
+              setAtBottom(true);
+              scrollRef.current?.scrollTo({
+                top: scrollRef.current.scrollHeight,
+                behavior: "smooth",
+              });
+            }}
+          >
+            <Icon name="down" size={17} />
+          </button>
+        </Hint>
+      )}
+    </div>
   );
 }

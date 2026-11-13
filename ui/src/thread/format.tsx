@@ -62,6 +62,13 @@ export function toolMeta(row: Row): {
 } {
   const args = row.args || {};
   switch (row.name) {
+    case "agent":
+      return {
+        icon: <Icon name="terminal" size={15} />,
+        label: "子任务",
+        pill: oneLine(args.task || args.task_id || args.action),
+        pillWide: true,
+      };
     case "read":
       return {
         icon: <Icon name="doc" size={15} />,
@@ -83,10 +90,26 @@ export function toolMeta(row: Row): {
         pill: basename(args.path),
         pillWide: false,
       };
+    case "stdio":
+      return {
+        icon: <Icon name="terminal" size={15} />,
+        label:
+          (
+            {
+              read: "读取输出",
+              write: "发送输入",
+              wait: "等待命令",
+              close: "结束输入",
+              cancel: "停止命令",
+            } as Record<string, string>
+          )[String(args.action)] || "命令输入输出",
+        pill: oneLine(args.process_id),
+        pillWide: false,
+      };
     case "shell":
       return {
         icon: <Icon name="terminal" size={15} />,
-        label: "执行",
+        label: args.background ? "后台执行" : "执行",
         pill: oneLine(args.command),
         pillWide: true,
       };

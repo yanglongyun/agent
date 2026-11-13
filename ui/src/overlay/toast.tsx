@@ -15,5 +15,9 @@ export function ToastHost() {
   if (!text) {
     return null;
   }
-  return <div className="toast">{text}</div>;
+  return (
+    <div className="toast" role="status" aria-live="polite">
+      {text}
+    </div>
+  );
 }

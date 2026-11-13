@@ -11,20 +11,6 @@ const callId = (id) =>
     ? String(id)
     : `call_${createHash("sha256").update(String(id)).digest("hex").slice(0, 40)}`;
 
-function normalizeUsage(source = {}) {
-  const input =
-    (source.input_tokens || 0) +
-    (source.cache_creation_input_tokens || 0) +
-    (source.cache_read_input_tokens || 0);
-  return {
-    ...source,
-    uncached_input_tokens: source.input_tokens || 0,
-    input_tokens: input,
-    output_tokens: source.output_tokens || 0,
-    total_tokens: input + (source.output_tokens || 0),
-  };
-}
-
 function normalizeToolOutput(value) {
   if (
     Array.isArray(value) &&
@@ -92,6 +78,21 @@ function toolResult(output) {
   return { content, is_error: false };
 }
 
+function appendMessage(messages, role, blocks) {
+  const last = messages.at(-1);
+  if (last?.role === role) {
+    last.content.push(...blocks);
+  } else {
+    messages.push({ role, content: blocks });
+  }
+}
+
+function prefixHash(request) {
+  return createHash("sha256")
+    .update(JSON.stringify([request.system || "", request.tools || [], request.messages]))
+    .digest("hex");
+}
+
 export function buildClaudePayload({
   instructions,
   messages,
@@ -105,14 +106,28 @@ export function buildClaudePayload({
   const pending = new Set();
   const seen = new Set();
   let returning = null;
-  const append = (role, blocks) => {
-    const last = output.at(-1);
-    if (last?.role === role) {
-      last.content.push(...blocks);
-    } else {
-      output.push({ role, content: blocks });
-    }
+  const payload = {
+    model,
+    max_tokens: 64000,
+    stream,
+    messages: output,
+    cache_control: { type: "ephemeral" },
   };
+  if (instructions) {
+    payload.system = String(instructions);
+  }
+  if (tools.length) {
+    payload.tools = tools.map((tool) => {
+      if (tool.type !== "function") {
+        fail(`Unsupported tool: ${tool.type}`);
+      }
+      return {
+        name: tool.name,
+        description: tool.description || "",
+        input_schema: structuredClone(tool.parameters || { type: "object", properties: {} }),
+      };
+    });
+  }
 
   for (const item of messages) {
     if (item.type === "function_call_output") {
@@ -155,7 +170,7 @@ export function buildClaudePayload({
       if (!args || typeof args !== "object" || Array.isArray(args)) {
         fail("Tool input must be an object");
       }
-      append("assistant", [{ type: "tool_use", id, name: item.name, input: args }]);
+      appendMessage(output, "assistant", [{ type: "tool_use", id, name: item.name, input: args }]);
       pending.add(id);
       seen.add(id);
       continue;
@@ -169,55 +184,35 @@ export function buildClaudePayload({
     }
     returning = null;
     if (item.type === "reasoning") {
-      // Claude 的签名原块只回送同一个 Claude 端点和模型；不能用其他协议的思考文本伪造。
+      // 签名绑定生成时的完整前缀；指令、工具或历史变化后不能继续回送。
       if (
         item.native?.protocol === "anthropic-messages" &&
         item.native.source === source &&
-        item.native.request_model === model
+        item.native.request_model === model &&
+        item.native.prefix_hash === prefixHash(payload)
       ) {
         const block = item.native.block;
         if (!["thinking", "redacted_thinking"].includes(block?.type)) {
           fail("Invalid Claude reasoning block");
         }
-        append("assistant", [structuredClone(block)]);
+        appendMessage(output, "assistant", [structuredClone(block)]);
       }
       continue;
     }
     if (item.type !== "message" || !["user", "assistant"].includes(item.role)) {
       fail(`Unsupported history item: ${item.type}`);
     }
-    append(item.role, parts(item.content));
+    appendMessage(output, item.role, parts(item.content));
   }
   if (pending.size) {
     fail("Unanswered tools must be settled before switching/continuing");
   }
 
-  const payload = {
-    model,
-    max_tokens: 64000,
-    stream,
-    messages: output,
-    cache_control: { type: "ephemeral" },
-  };
-  if (instructions) {
-    payload.system = String(instructions);
-  }
-  if (tools.length) {
-    payload.tools = tools.map((tool) => {
-      if (tool.type !== "function") {
-        fail(`Unsupported tool: ${tool.type}`);
-      }
-      return {
-        name: tool.name,
-        description: tool.description || "",
-        input_schema: structuredClone(tool.parameters || { type: "object", properties: {} }),
-      };
-    });
-  }
   return payload;
 }
 
-export function normalizeClaude(message, { source, model } = {}) {
+export function normalizeClaude(message, { source, model, request }) {
+  const prefix = { ...request, messages: structuredClone(request.messages) };
   const output = (message.content || []).map((block, index) => {
     const native = {
       protocol: "anthropic-messages",
@@ -228,6 +223,10 @@ export function normalizeClaude(message, { source, model } = {}) {
       index,
       block: structuredClone(block),
     };
+    if (["thinking", "redacted_thinking"].includes(block.type)) {
+      native.prefix_hash = prefixHash(prefix);
+    }
+    appendMessage(prefix.messages, "assistant", [structuredClone(block)]);
     if (block.type === "text") {
       return {
         type: "message",
@@ -262,7 +261,6 @@ export function normalizeClaude(message, { source, model } = {}) {
     }
     fail(`Unsupported Claude output block: ${block.type}`, "response_failed");
   });
-  const usage = normalizeUsage(message.usage);
   const reason = message.stop_reason;
   if (
     ![
@@ -285,7 +283,7 @@ export function normalizeClaude(message, { source, model } = {}) {
     model: message.model,
     status: incomplete ? "incomplete" : "completed",
     output,
-    usage,
+    usage: message.usage || null,
     ...(incomplete ? { incomplete_details: { reason } } : {}),
   };
 }
@@ -348,7 +346,10 @@ function sseParser(onEvent) {
   };
 }
 
-export async function readClaudeStream(body, { signal, onEvent, onActivity, source, model } = {}) {
+export async function readClaudeStream(
+  body,
+  { signal, onEvent, onActivity, source, model, request },
+) {
   let message;
   let stopped = false;
   let ended = false;
@@ -517,7 +518,7 @@ export async function readClaudeStream(body, { signal, onEvent, onActivity, sour
       fail("Claude tool calls do not match stop_reason", "response_failed");
     }
     message.content = [...blocks.values()];
-    return normalizeClaude(message, { source, model });
+    return normalizeClaude(message, { source, model, request });
   } finally {
     signal?.removeEventListener("abort", abort);
     await reader.cancel().catch(() => {});

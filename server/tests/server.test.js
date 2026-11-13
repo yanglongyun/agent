@@ -1,3 +1,5 @@
+import { configured, selectedInput } from "./config-fixture.js";
+import { startReply, runReply } from "./events.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
@@ -8,15 +10,129 @@ import { createServer } from "../index.js";
 import { defaults, paths } from "../config.js";
 import { message } from "../ai/index.js";
 import modelServer from "./model.js";
+import { appendEnvironment } from "../environment.js";
 
 const answer = (text) => ({
   output: [message(text, "output_text", "assistant")],
 });
-const events = (raw) =>
-  raw
-    .split("\n\n")
-    .filter((block) => block.startsWith("data: "))
-    .map((block) => JSON.parse(block.slice(6)));
+
+test("原始 usage 与计量快照通过 SSE 保存，切换模型和重新读取不会改变历史费用", async (t) => {
+  const usage = {
+    input_tokens: 1000,
+    output_tokens: 100,
+    total_tokens: 1100,
+    input_tokens_details: { cached_tokens: 0 },
+  };
+  const f = await fixture(t, () => ({ ...answer("回答"), usage }), { model: "gpt-6-luna" });
+  const id = await f.newSession();
+  const response = await startReply(f.request, `/api/sessions/${id}/messages`, { text: "问题" });
+  const list = await response.events;
+  const confirmation = list.flatMap((event) => event.saved || []).find((row) => row.usage);
+  assert.deepEqual(confirmation.usage, usage);
+  assert.equal(confirmation.metering.cost.amount, 0.00015);
+  const stored = f.runtime.db
+    .prepare("SELECT * FROM metering WHERE message_id = ?")
+    .get(confirmation.id);
+  assert.deepEqual(JSON.parse(stored.measurement), confirmation.metering);
+  assert.deepEqual(list.find((event) => event.type === "usage").metering, confirmation.metering);
+  const changed = await f.request("/api/config", "PUT", {
+    models: f.config.models.map((model) =>
+      model.id === "main" ? { ...model, model: "gpt-6.1-terra" } : model,
+    ),
+  });
+  assert.equal(changed.status, 200);
+  const second = await startReply(f.request, `/api/sessions/${id}/messages`, { text: "再问" });
+  assert.equal((await second.events).at(-1).status, "completed");
+  const history = (await (await f.request(`/api/sessions/${id}/messages`)).json()).messages;
+  const responses = history.filter((row) => row.usage);
+  assert.deepEqual(
+    responses.map((row) => row.metering.cost.amount),
+    [0.00015, 0.0015],
+  );
+  assert.deepEqual(responses[0].metering, confirmation.metering);
+  assert.deepEqual(responses[0].usage, usage);
+  const session = await (await f.request(`/api/sessions/${id}`)).json();
+  assert.deepEqual(session.cost, { amount: 0.00165, currency: "USD", unpriced_requests: 0 });
+  assert.equal(session.request_count, 2);
+  const page = await (await f.request(`/api/sessions/${id}/messages`)).json();
+  assert.deepEqual(page.session.cost, session.cost);
+  assert.equal(
+    f.runtime.db.prepare("SELECT COUNT(*) n FROM metering WHERE session_id = ?").get(id).n,
+    2,
+  );
+  assert.equal((await f.request(`/api/sessions/${id}`, "DELETE")).status, 200);
+  assert.equal(
+    f.runtime.db.prepare("SELECT COUNT(*) n FROM metering WHERE session_id = ?").get(id).n,
+    0,
+  );
+});
+
+test("计量写入失败与对应模型消息一起回滚，不发送保存确认", async (t) => {
+  const f = await fixture(
+    t,
+    () => ({ ...answer("回答"), usage: { input_tokens: 1, output_tokens: 1, total_tokens: 2 } }),
+    { model: "gpt-6-luna" },
+  );
+  const id = await f.newSession();
+  f.runtime.db.exec(
+    "CREATE TRIGGER fail_metering BEFORE INSERT ON metering BEGIN SELECT RAISE(ABORT, 'metering failed'); END",
+  );
+  const response = await startReply(f.request, `/api/sessions/${id}/messages`, { text: "问题" });
+  const list = await response.events;
+  assert.equal(list.at(-1).status, "incomplete");
+  assert.equal(list.flatMap((event) => event.saved || []).length, 1);
+  assert.equal(
+    f.runtime.db.prepare("SELECT COUNT(*) n FROM messages WHERE session_id = ?").get(id).n,
+    1,
+  );
+  assert.equal(f.runtime.db.prepare("SELECT COUNT(*) n FROM metering").get().n, 0);
+  assert.equal((await (await f.request(`/api/sessions/${id}`)).json()).request_count, 0);
+});
+
+test("所有会话系统提示词相同，环境保存为 meta，模型上下文追加快照而界面正文保持原样", async (t) => {
+  const instructions = [];
+  const inputs = [];
+  const f = await fixture(t, (_config, input, _tools, system) => {
+    instructions.push(system);
+    inputs.push(structuredClone(input));
+    return answer("回答");
+  });
+  const first = await f.newSession();
+  const second = await f.newSession();
+  f.runtime.db.prepare("UPDATE sessions SET created_at = ? WHERE id = ?").run(1000, first);
+  f.runtime.db.prepare("UPDATE sessions SET created_at = ? WHERE id = ?").run(2000, second);
+  for (const id of [first, first, second]) {
+    const response = await startReply(f.request, `/api/sessions/${id}/messages`, { text: "继续" });
+    const list = await response.events;
+    assert.equal(list.at(-1).status, "completed");
+    const user = list[0];
+    assert.equal(user.item.content[0].text, "继续");
+    assert.deepEqual(user.item, message("继续"));
+    assert.equal(user.meta.environment.workdir, f.root);
+    assert.equal(user.meta.environment.time, new Date(user.created_at).toISOString());
+    assert.deepEqual(user.saved[0].meta, user.meta);
+    const wire = inputs.at(-1).at(-1);
+    assert.equal(wire.content.length, 2);
+    assert.ok(wire.content.at(-1).text.includes(f.root));
+    assert.ok(wire.content.at(-1).text.includes(user.meta.environment.time));
+    assert.equal(user.session.preview, "继续");
+    const stored = f.runtime.db
+      .prepare("SELECT item, meta FROM messages WHERE id = ?")
+      .get(user.saved[0].id);
+    assert.deepEqual(JSON.parse(stored.item), user.item);
+    assert.deepEqual(JSON.parse(stored.meta), user.meta);
+    const page = await (await f.request(`/api/sessions/${id}/messages`)).json();
+    const read = page.messages.find((row) => row.id === user.saved[0].id);
+    assert.deepEqual(read.item, user.item);
+    assert.deepEqual(read.meta, user.meta);
+  }
+  assert.deepEqual(instructions, [f.config.system, f.config.system, f.config.system]);
+  assert.doesNotMatch(f.config.system, /\{\{\w+\}\}/);
+  assert.deepEqual(inputs[1][0], inputs[0][0]);
+  assert.equal(inputs[1][0].content.length, 2);
+  const sessions = (await (await f.request("/api/sessions")).json()).sessions;
+  assert.ok(sessions.every((session) => session.preview === "继续"));
+});
 
 test("图片工具结果存文件地址，当前循环和数据库历史都转换为标准图片输入", async (t) => {
   const bytes = Buffer.from(
@@ -68,9 +184,9 @@ test("图片工具结果存文件地址，当前循环和数据库历史都转�
   });
   await fs.writeFile(path.join(f.root, "sample.png"), bytes);
   const id = await f.newSession();
-  const first = await f.request(`/api/sessions/${id}/messages`, "POST", { text: "看看图片" });
-  const raw = await first.text();
-  const stream = events(raw);
+  const first = await startReply(f.request, `/api/sessions/${id}/messages`, { text: "看看图片" });
+  const raw = await first.events;
+  const stream = raw;
   assert.equal(stream.at(-1).status, "completed");
   assert.equal(raw.includes("data:image/"), false);
   assert.equal(
@@ -101,8 +217,8 @@ test("图片工具结果存文件地址，当前循环和数据库历史都转�
     404,
   );
 
-  const next = await f.request(`/api/sessions/${id}/messages`, "POST", { text: "再描述一次" });
-  assert.equal(events(await next.text()).at(-1).status, "completed");
+  const next = await startReply(f.request, `/api/sessions/${id}/messages`, { text: "再描述一次" });
+  assert.equal((await next.events).at(-1).status, "completed");
   assert.equal(requests, 3);
   assert.equal(
     f.runtime.db.prepare("SELECT COUNT(*) n FROM messages WHERE item LIKE '%data:image/%'").get().n,
@@ -113,16 +229,17 @@ test("图片工具结果存文件地址，当前循环和数据库历史都转�
 async function fixture(t, respond, overrides = {}) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "agentic-test-"));
   const p = paths({ AGENT_HOME: root });
+  const { model, ...settings } = overrides;
   const config = {
-    ...defaults(),
-    key: "test-model-key",
+    ...configured({ model: model || "gpt-4o-mini" }),
     workdir: root,
-    ...overrides,
+    ...settings,
     api: { listen: "127.0.0.1:0", token: "test-access-token-123456" },
   };
-  config.url = await modelServer(t, (request, emit, signal) =>
+  const url = await modelServer(t, (request, emit, signal) =>
     respond(config, request.input, request.tools, request.instructions, emit, signal),
   );
+  config.models = config.models.map((model) => ({ ...model, url }));
   const runtime = createServer({ p, config });
   const origin = await runtime.listen();
   t.after(async () => {
@@ -137,7 +254,15 @@ async function fixture(t, respond, overrides = {}) {
     fetch(origin + route, {
       method,
       headers,
-      ...(data === undefined ? {} : { body: JSON.stringify(data) }),
+      ...(data === undefined
+        ? {}
+        : {
+            body: JSON.stringify(
+              method === "POST" && (route.endsWith("/messages") || route === "/api/tasks")
+                ? selectedInput(data)
+                : data,
+            ),
+          }),
       ...extra,
     });
   const newSession = async () => {
@@ -148,18 +273,35 @@ async function fixture(t, respond, overrides = {}) {
   return { root, p, config, runtime, origin, headers, request, newSession };
 }
 
-test("三张表字段、路由、鉴权、分页和删除", async (t) => {
+test("业务表与计量表字段、路由、鉴权、分页和删除", async (t) => {
   const f = await fixture(t, async () => answer("你好"));
   const columns = (table) =>
     f.runtime.db
       .prepare(`PRAGMA table_info(${table})`)
       .all()
       .map((r) => r.name);
-  assert.deepEqual(columns("sessions"), ["id", "title", "created_at", "updated_at"]);
-  assert.deepEqual(columns("messages"), ["id", "session_id", "item", "usage", "created_at"]);
+  assert.deepEqual(columns("sessions"), [
+    "id",
+    "title",
+    "total_cost_nanos",
+    "unpriced_requests",
+    "request_count",
+    "created_at",
+    "updated_at",
+  ]);
+  assert.deepEqual(columns("messages"), [
+    "id",
+    "session_id",
+    "task_id",
+    "item",
+    "meta",
+    "usage",
+    "created_at",
+  ]);
   assert.deepEqual(columns("compactions"), [
     "id",
     "session_id",
+    "task_id",
     "through_id",
     "summary",
     "usage",
@@ -168,7 +310,16 @@ test("三张表字段、路由、鉴权、分页和删除", async (t) => {
   const tables = f.runtime.db
     .prepare("SELECT name,sql FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")
     .all();
-  assert.equal(tables.length, 3);
+  assert.equal(tables.length, 6);
+  assert.deepEqual(columns("metering"), [
+    "id",
+    "session_id",
+    "task_id",
+    "message_id",
+    "compaction_id",
+    "measurement",
+    "created_at",
+  ]);
   for (const row of tables) {
     assert.doesNotMatch(row.sql, /FOREIGN|CHECK/i);
   }
@@ -196,9 +347,8 @@ test("三张表字段、路由、鉴权、分页和删除", async (t) => {
   );
   const id = await f.newSession();
   const base = `/api/sessions/${id}`;
-  const reply = await f.request(base + "/messages", "POST", { text: "你好" });
-  assert.equal(reply.headers.get("content-type"), "text/event-stream");
-  assert.equal(events(await reply.text()).at(-1).status, "completed");
+  const reply = await startReply(f.request, base + "/messages", { text: "你好" });
+  assert.equal((await reply.events).at(-1).status, "completed");
   const first = await (await f.request(base + "/messages?limit=1")).json();
   assert.equal(first.has_more, true);
   assert.equal(first.messages[0].item.role, "assistant");
@@ -211,7 +361,7 @@ test("三张表字段、路由、鉴权、分页和删除", async (t) => {
   await f.request(base, "PATCH", { title: "改名" });
   assert.equal((await (await f.request(base)).json()).title, "改名");
   const c = await (await f.request("/api/config")).json();
-  assert.equal(c.key, undefined);
+  assert.ok(c.models.every((model) => model.key === undefined));
   assert.equal(c.api.token, undefined);
   assert.equal((await f.request("/api/config", "PUT", { api: { token: "bad" } })).status, 400);
   assert.equal((await f.request("/api/config", "PUT", { keep: 0 })).status, 400);
@@ -229,7 +379,7 @@ test("三张表字段、路由、鉴权、分页和删除", async (t) => {
 test("工具循环事件顺序和完整持久化", async (t) => {
   let round = 0;
   const f = await fixture(t, async (config, input, tools, instructions, delta) => {
-    assert.equal(tools.length, 4);
+    assert.equal(tools.length, 6);
     if (!round++) {
       return {
         output: [
@@ -247,10 +397,10 @@ test("工具循环事件顺序和完整持久化", async (t) => {
     return answer("完成");
   });
   const id = await f.newSession();
-  const response = await f.request(`/api/sessions/${id}/messages`, "POST", {
+  const response = await startReply(f.request, `/api/sessions/${id}/messages`, {
     text: "写文件",
   });
-  const list = events(await response.text());
+  const list = await response.events;
   assert.deepEqual(
     list.map((e) => e.type),
     [
@@ -280,7 +430,9 @@ test("工具循环事件顺序和完整持久化", async (t) => {
     assert.deepEqual(saved[index], {
       sequence: index,
       id: rows[index].id,
+      meta: rows[index].meta,
       usage: rows[index].usage,
+      metering: rows[index].metering,
       created_at: rows[index].created_at,
     });
   }
@@ -310,10 +462,10 @@ test("最新摘要加后续消息；压缩表追加，原消息不删除", async
   );
   const id = await f.newSession();
   for (let i = 0; i < 5; i++) {
-    const r = await f.request(`/api/sessions/${id}/messages`, "POST", {
+    const r = await startReply(f.request, `/api/sessions/${id}/messages`, {
       text: `第${i}条`,
     });
-    assert.equal(events(await r.text()).at(-1).status, "completed");
+    assert.equal((await r.events).at(-1).status, "completed");
   }
   const all = f.runtime.db.prepare("SELECT * FROM messages WHERE session_id=? ORDER BY id").all(id);
   const compressed = f.runtime.db
@@ -329,9 +481,25 @@ test("最新摘要加后续消息；压缩表追加，原消息不删除", async
   // Disable new compression; the next request must read exactly the latest snapshot + following rows.
   await f.request("/api/config", "PUT", { compact_at: 100000 });
   const before = compressed.at(-1);
-  await (await f.request(`/api/sessions/${id}/messages`, "POST", { text: "继续" })).text();
-  const expected = all.filter((r) => r.id > before.through_id).map((r) => JSON.parse(r.item));
-  assert.deepEqual(inputs.at(-1).slice(1), [...expected, message("继续")]);
+  await runReply(f.request, `/api/sessions/${id}/messages`, { text: "继续" });
+  const expected = all
+    .filter((r) => r.id > before.through_id)
+    .map((row) => {
+      const item = JSON.parse(row.item);
+      const meta = row.meta ? JSON.parse(row.meta) : null;
+      if (meta?.environment) {
+        appendEnvironment(item, meta.environment);
+      }
+      return item;
+    });
+  const newestUser = f.runtime.db
+    .prepare(
+      "SELECT item, meta FROM messages WHERE session_id = ? AND json_extract(item, '$.role') = 'user' ORDER BY id DESC LIMIT 1",
+    )
+    .get(id);
+  const newestInput = JSON.parse(newestUser.item);
+  appendEnvironment(newestInput, JSON.parse(newestUser.meta).environment);
+  assert.deepEqual(inputs.at(-1).slice(1), [...expected, newestInput]);
   assert.equal(inputs.at(-1)[0].content[0].text, before.summary);
 });
 
@@ -362,13 +530,9 @@ test("连续压缩引用已经落库的工具消息", async (t) => {
   );
   await fs.writeFile(path.join(f.root, "tiny.png"), Buffer.from("iVBORw0KGgo=", "base64"));
   const id = await f.newSession();
-  const list = events(
-    await (
-      await f.request(`/api/sessions/${id}/messages`, "POST", {
-        text: "看图片",
-      })
-    ).text(),
-  );
+  const list = await runReply(f.request, `/api/sessions/${id}/messages`, {
+    text: "看图片",
+  });
   assert.equal(list.at(-1).status, "completed");
   const c = f.runtime.db.prepare("SELECT * FROM compactions ORDER BY id").all();
   assert.ok(c.length >= 2);
@@ -411,9 +575,7 @@ test("后续请求失败仍保留已完成的工具轮次和已保存的摘要",
       .prepare("INSERT INTO messages(session_id,item,created_at) VALUES(?,?,?)")
       .run(id, JSON.stringify(message("以前" + i)), Date.now());
   }
-  const list = events(
-    await (await f.request(`/api/sessions/${id}/messages`, "POST", { text: "开始" })).text(),
-  );
+  const list = await runReply(f.request, `/api/sessions/${id}/messages`, { text: "开始" });
   assert.equal(list.at(-1).status, "incomplete");
   assert.equal(f.runtime.db.prepare("SELECT COUNT(*) n FROM messages").get().n, 7);
   assert.equal(f.runtime.db.prepare("SELECT COUNT(*) n FROM compactions").get().n, 1);
@@ -435,10 +597,10 @@ test("同会话互斥，独立会话可执行，取消等待清理完成", async
     return answer("不应发生");
   });
   const id = await f.newSession();
-  const r = await f.request(`/api/sessions/${id}/messages`, "POST", {
+  const r = await startReply(f.request, `/api/sessions/${id}/messages`, {
     text: "慢",
   });
-  const collected = r.text();
+  const collected = r.events;
   await started;
   assert.equal(
     (await f.request(`/api/sessions/${id}/messages`, "POST", { text: "冲突" })).status,
@@ -447,54 +609,17 @@ test("同会话互斥，独立会话可执行，取消等待清理完成", async
   assert.equal((await f.request(`/api/sessions/${id}`, "DELETE")).status, 409);
   const second = await f.newSession();
   assert.equal(
-    events(
-      await (
-        await f.request(`/api/sessions/${second}/messages`, "POST", {
-          text: "快",
-        })
-      ).text(),
+    (
+      await runReply(f.request, `/api/sessions/${second}/messages`, {
+        text: "快",
+      })
     ).at(-1).status,
     "completed",
   );
   assert.equal((await f.request(`/api/sessions/${id}/cancel`, "POST", {})).status, 200);
-  assert.equal(events(await collected).at(-1).status, "aborted");
+  assert.equal((await collected).at(-1).status, "aborted");
   assert.equal((await (await f.request(`/api/sessions/${id}`)).json()).running, false);
   assert.equal((await (await f.request(`/api/sessions/${id}/messages`)).json()).messages.length, 1);
-});
-
-test("断开 HTTP 连接会中止模型请求", async (t) => {
-  let notify;
-  const aborted = new Promise((r) => {
-    notify = r;
-  });
-  const f = await fixture(t, async (_c, _i, _t, _s, _d, signal) => {
-    try {
-      await delay(10000, null, { signal });
-    } finally {
-      if (signal.aborted) {
-        notify();
-      }
-    }
-    return answer("不应发生");
-  });
-  const id = await f.newSession();
-  const abort = new AbortController();
-  const response = await f.request(
-    `/api/sessions/${id}/messages`,
-    "POST",
-    { text: "慢" },
-    { signal: abort.signal },
-  );
-  const read = response.text().catch(() => {});
-  abort.abort();
-  await read;
-  await Promise.race([
-    aborted,
-    delay(2000).then(() => {
-      throw new Error("未收到中止");
-    }),
-  ]);
-  assert.equal(f.runtime.db.prepare("SELECT COUNT(*) n FROM messages").get().n, 1);
 });
 
 test("用户输入读取数据库 usage，摘要保存后才请求模型", async (t) => {
@@ -527,14 +652,18 @@ test("用户输入读取数据库 usage，摘要保存后才请求模型", async
   );
   const id = await f.newSession();
   for (let i = 0; i < 3; i++) {
-    const response = await f.request(`/api/sessions/${id}/messages`, "POST", { text: `问题${i}` });
-    const list = events(await response.text());
+    const response = await startReply(f.request, `/api/sessions/${id}/messages`, {
+      text: `问题${i}`,
+    });
+    const list = await response.events;
     assert.equal(list.at(-1).status, "completed");
     for (const event of list.filter(
       (event) => event.type === "compact" && event.status === "completed",
     )) {
       assert.deepEqual(event.compaction, {
         ...f.runtime.db.prepare("SELECT * FROM compactions WHERE id = ?").get(event.compaction.id),
+        usage: event.usage,
+        metering: event.metering,
       });
       assert.equal(event.compaction.summary, event.item.content[0].text);
     }
@@ -595,8 +724,8 @@ test("工具轮次保存实际 usage，下一次模型请求前完成压缩", as
       .prepare("INSERT INTO messages(session_id,item,created_at) VALUES(?,?,?)")
       .run(id, JSON.stringify(message(`旧问题${i}`)), Date.now());
   }
-  const response = await f.request(`/api/sessions/${id}/messages`, "POST", { text: "写文件" });
-  assert.equal(events(await response.text()).at(-1).status, "completed");
+  const response = await startReply(f.request, `/api/sessions/${id}/messages`, { text: "写文件" });
+  assert.equal((await response.events).at(-1).status, "completed");
   assert.equal(calls, 2);
 });
 
@@ -605,7 +734,7 @@ test("最近响应没有 usage 时不使用更早的用量", async (t) => {
   const f = await fixture(
     t,
     async (_config, _input, tools) => {
-      assert.equal(tools.length, 4);
+      assert.equal(tools.length, 6);
       calls++;
       if (calls === 1) {
         return { ...answer("第一次"), usage: { total_tokens: 100 } };
@@ -619,8 +748,10 @@ test("最近响应没有 usage 时不使用更早的用量", async (t) => {
     if (i === 2) {
       await f.request("/api/config", "PUT", { compact_at: 10 });
     }
-    const response = await f.request(`/api/sessions/${id}/messages`, "POST", { text: `消息${i}` });
-    const list = events(await response.text());
+    const response = await startReply(f.request, `/api/sessions/${id}/messages`, {
+      text: `消息${i}`,
+    });
+    const list = await response.events;
     assert.equal(list.at(-1).status, "completed");
     assert.equal(
       list.some((event) => event.type === "error" || event.type === "compact"),
@@ -651,24 +782,13 @@ test("多个工具先交付完整调用和 usage，取消时不保存半轮结�
     usage: { total_tokens: 30 },
   }));
   const id = await f.newSession();
-  const response = await f.request(`/api/sessions/${id}/messages`, "POST", { text: "运行" });
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder();
-  let raw = "";
-  while (!raw.includes('"type":"function_call_output"')) {
-    const chunk = await reader.read();
-    assert.equal(chunk.done, false);
-    raw += decoder.decode(chunk.value, { stream: true });
-  }
+  const response = await startReply(f.request, `/api/sessions/${id}/messages`, { text: "运行" });
+  await response.subscription.waitFor(
+    (frame) =>
+      frame.run_id === response.accepted.run_id && frame.event?.type === "function_call_output",
+  );
   await f.request(`/api/sessions/${id}/cancel`, "POST", {});
-  for (;;) {
-    const chunk = await reader.read();
-    if (chunk.done) {
-      break;
-    }
-    raw += decoder.decode(chunk.value, { stream: true });
-  }
-  const list = events(raw);
+  const list = await response.events;
   assert.deepEqual(
     list.map((event) => event.type),
     ["message", "function_call", "function_call", "usage", "function_call_output", "done"],
@@ -698,8 +818,8 @@ test("模型 incomplete 不交付完整块、不执行工具、不保存半截�
     };
   });
   const id = await f.newSession();
-  const response = await f.request(`/api/sessions/${id}/messages`, "POST", { text: "写文件" });
-  const list = events(await response.text());
+  const response = await startReply(f.request, `/api/sessions/${id}/messages`, { text: "写文件" });
+  const list = await response.events;
   assert.deepEqual(
     list.map((event) => event.type),
     ["message", "reasoning", "error", "done"],
@@ -731,7 +851,7 @@ test("删除会话清理图片快照；不存在的会话在各层返回 404", a
   });
   await fs.writeFile(path.join(f.root, "sample.png"), Buffer.from("image"));
   const id = await f.newSession();
-  await (await f.request(`/api/sessions/${id}/messages`, "POST", { text: "read" })).text();
+  await runReply(f.request, `/api/sessions/${id}/messages`, { text: "read" });
   assert.equal((await fs.readdir(f.p.images)).length, 1);
   assert.equal((await f.request(`/api/sessions/${id}`, "DELETE")).status, 200);
   assert.deepEqual(await fs.readdir(f.p.images), []);
@@ -762,20 +882,16 @@ test("取消半轮工具时清理尚未入库的图片快照", async (t) => {
   }));
   await fs.writeFile(path.join(f.root, "sample.png"), Buffer.from("image"));
   const id = await f.newSession();
-  const response = await f.request(`/api/sessions/${id}/messages`, "POST", {
+  const response = await startReply(f.request, `/api/sessions/${id}/messages`, {
     text: "read then wait",
   });
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder();
-  let received = "";
-  while (!received.includes('"type":"function_call_output"')) {
-    const { value, done } = await reader.read();
-    assert.equal(done, false);
-    received += decoder.decode(value);
-  }
+  await response.subscription.waitFor(
+    (frame) =>
+      frame.run_id === response.accepted.run_id && frame.event?.type === "function_call_output",
+  );
   assert.equal((await fs.readdir(f.p.images)).length, 1);
   await f.request(`/api/sessions/${id}/cancel`, "POST");
-  await reader.cancel();
+  await response.events;
   assert.deepEqual(await fs.readdir(f.p.images), []);
   const records = await (await f.request(`/api/sessions/${id}/messages`)).json();
   assert.equal(records.messages.length, 1);
@@ -787,16 +903,15 @@ test("标题先去空白再校验；设置保存返回结果并通过 GET 读取
   const created = await (await f.request("/api/sessions", "POST", { title })).json();
   assert.equal(created.title, title.trim());
   assert.equal((await f.request(`/api/sessions/${created.id}`, "PATCH", { title })).status, 200);
-  assert.equal(
-    (await f.request("/api/config", "PUT", { context_window: 100, compact_at: 100 })).status,
-    400,
-  );
   const saved = await (
-    await f.request("/api/config", "PUT", { context_window: 100, compact_at: 90 })
+    await f.request("/api/config", "PUT", {
+      models: f.config.models.map((model) => ({ ...model, context_window: 100 })),
+      compact_at: 90,
+    })
   ).json();
   assert.deepEqual(saved, { restart_required: false });
   const config = await (await f.request("/api/config")).json();
-  assert.equal(config.context_window, 100);
+  assert.equal(config.models[0].context_window, 100);
   assert.equal(config.compact_at, 90);
 });
 
@@ -820,6 +935,7 @@ test("页面深链接和刷新返回 UI，未知资源与 API 不返回 HTML", a
   }
   for (const route of [
     "/assets/missing.js",
+    "/tasks/example",
     "/missing",
     "/sessions/example/extra",
     "/sessions/%2e%2e%2fconfig.json",
@@ -838,8 +954,10 @@ test("事务失败不发送落库确认，done 仍返回会话最终状态", asy
     WHEN json_extract(NEW.item, '$.role') = 'assistant'
     BEGIN SELECT RAISE(ABORT, 'test write rejected'); END;`);
   const id = await f.newSession();
-  const response = await f.request(`/api/sessions/${id}/messages`, "POST", { text: "测试失败" });
-  const list = events(await response.text());
+  const response = await startReply(f.request, `/api/sessions/${id}/messages`, {
+    text: "测试失败",
+  });
+  const list = await response.events;
   assert.equal(list.at(-1).status, "incomplete");
   assert.equal(list.at(-1).session.running, false);
   assert.ok(list.some((event) => event.type === "error"));
@@ -859,22 +977,22 @@ test("用户一次上传五张图片，消息与 SSE 只存地址，下次请求
   const f = await fixture(t, async (_config, input) => {
     requests++;
     const parts = input[0].content;
-    assert.equal(parts.length, 5);
-    for (const part of parts) {
+    assert.equal(parts.length, 6);
+    assert.ok(parts.at(-1).text.startsWith("\n\n环境："));
+    for (const part of parts.filter((part) => part.type === "input_image")) {
       assert.deepEqual(part, { type: "input_image", image_url: uploadedPNG, detail: "auto" });
     }
     return answer("已查看五张图片");
   });
   const id = await f.newSession();
   const base = `/api/sessions/${id}`;
-  const response = await f.request(base + "/messages", "POST", {
+  const response = await startReply(f.request, base + "/messages", {
     text: "",
     images: Array(5).fill(uploadedPNG),
   });
-  assert.equal(response.status, 200);
-  const raw = await response.text();
-  assert.equal(raw.includes("base64"), false);
-  const stream = events(raw);
+  const raw = await response.events;
+  assert.equal(JSON.stringify(raw).includes("base64"), false);
+  const stream = raw;
   assert.equal(stream.at(-1).status, "completed");
   const user = stream[0].item;
   assert.equal(stream[0].session.preview, "[图片]");
@@ -886,7 +1004,7 @@ test("用户一次上传五张图片，消息与 SSE 只存地址，下次请求
     0,
   );
   assert.equal((await fs.readdir(f.p.images)).length, 5);
-  for (const part of user.content) {
+  for (const part of user.content.filter((part) => part.type === "input_image")) {
     const image = await f.request(part.image_url);
     assert.equal(image.status, 200);
     assert.equal(image.headers.get("content-type"), "image/png");
@@ -896,8 +1014,8 @@ test("用户一次上传五张图片，消息与 SSE 只存地址，下次请求
     );
     assert.equal((await fetch(f.origin + part.image_url)).status, 401);
   }
-  const next = await f.request(base + "/messages", "POST", { text: "再看一下", images: [] });
-  assert.equal(events(await next.text()).at(-1).status, "completed");
+  const next = await startReply(f.request, base + "/messages", { text: "再看一下", images: [] });
+  assert.equal((await next.events).at(-1).status, "completed");
   assert.equal(requests, 2);
   assert.equal((await (await f.request("/api/sessions")).json()).sessions[0].preview, "[图片]");
   assert.equal((await f.request(base, "DELETE")).status, 200);
@@ -964,13 +1082,53 @@ test("用户消息保存失败时清理上传文件；模型失败时保留已�
   await failed.text();
   assert.deepEqual(await fs.readdir(f.p.images), []);
   f.runtime.db.exec("DROP TRIGGER reject_user");
-  const response = await f.request(`/api/sessions/${id}/messages`, "POST", {
+  const response = await startReply(f.request, `/api/sessions/${id}/messages`, {
     text: "看图",
     images: [uploadedPNG],
   });
-  const stream = events(await response.text());
+  const stream = await response.events;
   assert.equal(stream.at(-1).status, "incomplete");
   assert.equal(stream[0].saved.length, 1);
   assert.equal((await fs.readdir(f.p.images)).length, 1);
   assert.equal(f.runtime.db.prepare("SELECT COUNT(*) n FROM messages").get().n, 1);
+});
+
+test("过期压缩成功但主请求失败，重试不再次压缩同一份旧上下文", async (t) => {
+  let summaries = 0;
+  let attempts = 0;
+  const f = await fixture(
+    t,
+    (_config, _input, tools) => {
+      if (!tools.length) {
+        summaries++;
+        return answer("已保存摘要");
+      }
+      attempts++;
+      if (attempts === 1) {
+        return {
+          status: "incomplete",
+          output: [],
+          incomplete_details: { reason: "max_output_tokens" },
+        };
+      }
+      return answer("继续回答");
+    },
+    { compact_on_cache_expiry: true, cache_ttl: 300, keep: 3 },
+  );
+  const id = await f.newSession();
+  for (let i = 0; i < 6; i++) {
+    const role = i % 2 === 0 ? "user" : "assistant";
+    const item = message(`旧消息${i}`, role === "user" ? "input_text" : "output_text", role);
+    f.runtime.db
+      .prepare("INSERT INTO messages (session_id, item, created_at) VALUES (?, ?, ?)")
+      .run(id, JSON.stringify(item), Date.now() - 300001);
+  }
+  const first = await runReply(f.request, `/api/sessions/${id}/messages`, { text: "继续" });
+  assert.equal(first.at(-1).status, "incomplete");
+  assert.equal(summaries, 1);
+  const second = await runReply(f.request, `/api/sessions/${id}/messages`, { text: "重试" });
+  assert.equal(second.at(-1).status, "completed");
+  assert.equal(summaries, 1);
+  assert.equal(attempts, 2);
+  assert.equal(f.runtime.db.prepare("SELECT COUNT(*) n FROM messages").get().n, 9);
 });

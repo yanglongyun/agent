@@ -1,5 +1,4 @@
 import { callModel, message, outputText } from "../ai/index.js";
-import { renderPrompt } from "../config.js";
 
 export default async function compact(messages, model, config, signal, onEvent = () => {}) {
   if (messages.length <= config.keep + 2) {
@@ -27,13 +26,16 @@ export default async function compact(messages, model, config, signal, onEvent =
   if (count <= 1) {
     return null;
   }
+  if (!model?.trim() || !config.url?.trim() || !config.key?.trim()) {
+    throw new Error("尚未配置压缩模型：请在设置中填写压缩接口、API Key 和模型");
+  }
   await onEvent({ type: "compact", status: "started" });
   const source = messages
     .slice(0, count)
     .map((item) => JSON.stringify(item))
     .join("\n");
   const response = await callModel(
-    renderPrompt(config.compact_system, config.workdir),
+    config.compact_system,
     [message(source)],
     model,
     config,
@@ -51,9 +53,10 @@ export default async function compact(messages, model, config, signal, onEvent =
     throw new Error("压缩没有返回摘要");
   }
   return {
-    item: message(renderPrompt(config.compact_prefix, config.workdir) + summary),
+    item: message(config.compact_prefix + summary),
     start: 0,
     end: count,
     usage: response.usage || null,
+    metering: response.metering,
   };
 }

@@ -15,13 +15,17 @@ import modelServer from "./model.js";
 async function workspace(t) {
   const workdir = await fs.mkdtemp(path.join(os.tmpdir(), "agentic-tools-"));
   t.after(() => fs.rm(workdir, { recursive: true, force: true }));
-  return { ...defaults(), workdir };
+  return {
+    ...defaults(),
+    workdir,
+    compact_connection: { url: "", key: "", protocol: "responses" },
+  };
 }
-test("四个工具实际读写、精确替换、命令执行与错误反馈", async (t) => {
+test("工具实际读写、精确替换、命令执行与错误反馈", async (t) => {
   const c = await workspace(t);
   assert.deepEqual(
     tools.map((t) => t.name),
-    ["shell", "read", "write", "edit"],
+    ["agent", "shell", "stdio", "read", "write", "edit"],
   );
   await runTool(
     {
@@ -155,9 +159,18 @@ test("压缩失败终止运行，保留原始消息并发送一次 error 和 don
   const result = await run({
     instructions: "测试指令 {{原样保留}}",
     model: "fixture-model",
+    compactModel: "summary-model",
     messages: input,
     usage: { total_tokens: 1000 },
-    config: { ...defaults(), compact_at: 1, keep: 1, url, key: "test" },
+    config: {
+      ...defaults(),
+      compact_connection: { url: url, key: "test" },
+
+      compact_at: 1,
+      keep: 1,
+      url,
+      key: "test",
+    },
     onEvent: (event) => events.push(event),
   });
   assert.equal(result.status, "incomplete");
@@ -221,9 +234,18 @@ test("压缩只看模型 total_tokens，长消息不触发估算", async (t) => 
     const result = await run({
       instructions: "测试指令 {{原样保留}}",
       model: "fixture-model",
+      compactModel: "summary-model",
       messages: [message("很长的内容".repeat(10000)), message("二"), message("三"), message("四")],
       usage: { total_tokens: totalTokens },
-      config: { ...defaults(), compact_at: 10, keep: 1, url, key: "test" },
+      config: {
+        ...defaults(),
+        compact_connection: { url: url, key: "test" },
+
+        compact_at: 10,
+        keep: 1,
+        url,
+        key: "test",
+      },
     });
     assert.equal(result.status, "completed");
     assert.equal(compressions, totalTokens === 10 ? 1 : 0);
@@ -234,7 +256,7 @@ test("压缩只看模型 total_tokens，长消息不触发估算", async (t) => 
 test("最终回答不立即压缩；模型完整块之后单独发送 usage", async (t) => {
   const emitted = [];
   const url = await modelServer(t, (request) => {
-    assert.equal(request.tools.length, 4);
+    assert.equal(request.tools.length, 6);
     return {
       output: [{ type: "reasoning", summary: [] }, message("回答", "output_text", "assistant")],
       usage: { input_tokens: 8, output_tokens: 3, total_tokens: 11 },
@@ -243,8 +265,17 @@ test("最终回答不立即压缩；模型完整块之后单独发送 usage", as
   await run({
     instructions: "测试指令 {{原样保留}}",
     model: "fixture-model",
+    compactModel: "summary-model",
     messages: [message("一"), message("二"), message("三"), message("四")],
-    config: { ...defaults(), compact_at: 10, keep: 1, url, key: "test" },
+    config: {
+      ...defaults(),
+      compact_connection: { url: url, key: "test" },
+
+      compact_at: 10,
+      keep: 1,
+      url,
+      key: "test",
+    },
     onEvent: (event) => emitted.push(event),
   });
   assert.deepEqual(
@@ -283,6 +314,7 @@ test("完整模型块原样交付，usage 先于工具执行，循环直接使�
   const result = await run({
     instructions: "测试指令 {{原样保留}}",
     model: "fixture-model",
+    compactModel: "summary-model",
     messages,
     config,
     onEvent: async (event) => {
@@ -333,6 +365,7 @@ test("取消只发送一个 aborted done；超时发送 error 和 incomplete don
     await run({
       instructions: "测试指令 {{原样保留}}",
       model: "fixture-model",
+      compactModel: "summary-model",
       messages: [],
       config: { ...defaults(), url, key: "test" },
       signal: controller.signal,
@@ -359,10 +392,11 @@ test("压缩和主请求都使用显式 model，先保存摘要再请求模型",
   const received = [];
   let saved = false;
   const url = await modelServer(t, (request) => {
-    assert.equal(request.model, "fixture-model");
     if (!request.tools.length) {
+      assert.equal(request.model, "summary-model");
       return { output: [message("摘要", "output_text", "assistant")], usage: { total_tokens: 4 } };
     }
+    assert.equal(request.model, "fixture-model");
     assert.equal(saved, true);
     assert.deepEqual(request.input[0], received[1].item);
     return { output: [message("回答", "output_text", "assistant")] };
@@ -370,11 +404,14 @@ test("压缩和主请求都使用显式 model，先保存摘要再请求模型",
   await run({
     instructions: "测试指令 {{原样保留}}",
     model: "fixture-model",
+    compactModel: "summary-model",
     messages,
     usage: { total_tokens: 10 },
     config: {
       ...defaults(),
       model: "must-not-use-config-model",
+      compact_connection: { url: url, key: "test" },
+
       compact_at: 10,
       keep: 1,
       url,
@@ -410,9 +447,18 @@ test("摘要保存失败后停止，不发起下一次模型请求", async (t) =
   await run({
     instructions: "测试指令 {{原样保留}}",
     model: "fixture-model",
+    compactModel: "summary-model",
     messages,
     usage: { total_tokens: 10 },
-    config: { ...defaults(), compact_at: 10, keep: 1, url, key: "test" },
+    config: {
+      ...defaults(),
+      compact_connection: { url: url, key: "test" },
+
+      compact_at: 10,
+      keep: 1,
+      url,
+      key: "test",
+    },
     onEvent: (event) => {
       if (event.type === "compact" && event.status === "completed") {
         throw new Error("数据库写入失败");
@@ -461,4 +507,96 @@ test("read 拒绝错误范围，shell 相对目录基于配置目录，退出失
   );
   assert.equal(timeout.failed, true);
   assert.match(timeout.text, /超时/);
+});
+
+test("缓存过期在请求前触发独立模型压缩，未开启、未过期、新会话和短上下文跳过", async (t) => {
+  const now = Date.now();
+  t.mock.method(Date, "now", () => now);
+  for (const scenario of [
+    { enabled: false, last: now - 300000, count: 4, expected: 0 },
+    { enabled: true, last: now - 299999, count: 4, expected: 0 },
+    { enabled: true, last: now - 300000, count: 4, expected: 1 },
+    { enabled: true, last: null, count: 4, expected: 0 },
+    { enabled: true, last: now - 300000, count: 2, expected: 0 },
+  ]) {
+    let summaries = 0;
+    const compactURL = await modelServer(t, (request) => {
+      summaries++;
+      assert.equal(request.model, "cheap-summary");
+      assert.deepEqual(request.tools, []);
+      return { output: [message("摘要", "output_text", "assistant")] };
+    });
+    const url = await modelServer(t, (request) => {
+      assert.equal(request.model, "main");
+      assert.equal(request.tools.length, 6);
+      assert.equal(summaries, scenario.expected);
+      return { output: [message("回答", "output_text", "assistant")] };
+    });
+    const messages = Array.from({ length: scenario.count }, (_, i) => message(String(i)));
+    const result = await run({
+      instructions: "固定主指令",
+      messages,
+      model: "main",
+      compactModel: "cheap-summary",
+      lastResponseAt: scenario.last,
+      config: {
+        ...defaults(),
+        url,
+        key: "main-key",
+        keep: 1,
+        compact_connection: { url: compactURL, key: "summary-key" },
+
+        compact_on_cache_expiry: scenario.enabled,
+        cache_ttl: 300,
+      },
+    });
+    assert.equal(result.status, "completed");
+    assert.equal(summaries, scenario.expected);
+    assert.equal(messages.length, scenario.expected ? 3 : scenario.count + 1);
+  }
+});
+
+test("工具执行跨过缓存有效期时先压缩，响应会刷新过期计时", async (t) => {
+  let now = Date.now();
+  t.mock.method(Date, "now", () => now);
+  const config = await workspace(t);
+  config.compact_on_cache_expiry = true;
+  config.cache_ttl = 300;
+  config.keep = 1;
+  config.key = "main-key";
+  config.compact_connection.key = "summary-key";
+  let requests = 0;
+  let summaries = 0;
+  config.compact_connection.url = await modelServer(t, () => {
+    summaries++;
+    return { output: [message("摘要", "output_text", "assistant")] };
+  });
+  config.url = await modelServer(t, () => {
+    requests++;
+    if (requests === 1) {
+      return {
+        output: [
+          { type: "function_call", call_id: "read", name: "read", arguments: '{"path":"absent"}' },
+        ],
+      };
+    }
+    assert.equal(summaries, 1);
+    return { output: [message("完成", "output_text", "assistant")] };
+  });
+  const result = await run({
+    instructions: "固定",
+    messages: [message("一"), message("二"), message("三"), message("四")],
+    model: "main",
+    compactModel: "summary",
+    config,
+    lastResponseAt: now - 299999,
+    onEvent(event) {
+      if (event.type === "function_call_output") {
+        now += 300000;
+      }
+    },
+  });
+  assert.equal(result.status, "completed");
+  assert.equal(summaries, 1);
+  assert.equal(requests, 2);
 });

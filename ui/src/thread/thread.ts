@@ -1,3 +1,4 @@
+import type { Attachment, UploadAttachment } from "./attachments";
 // 历史和实时消息使用同一种记录；显示行从记录生成，不保存第二份可变状态。
 export type TextPart = {
   type: "input_text" | "output_text" | "summary_text" | "reasoning_text";
@@ -34,13 +35,51 @@ export interface FunctionOutputItem {
   output: string | ContentPart[];
 }
 export type StoredItem = MessageItem | ReasoningItem | FunctionCallItem | FunctionOutputItem;
+export interface Metering {
+  protocol: string;
+  model: string;
+  endpoint: string;
+  context_tokens: number | null;
+  status: "priced" | "unpriced" | "invalid_usage" | "unsupported_tier";
+  cost: {
+    amount: number;
+    currency: string;
+    basis: string;
+    reference: string;
+    rule_date: string;
+    tier: string;
+    units: Array<{ kind: string; tokens: number; rate: number; amount: number }>;
+  } | null;
+}
+export interface UsageRecord {
+  usage: Record<string, unknown>;
+  metering?: Metering | null;
+}
+export interface MessageMeta {
+  model_id?: string;
+  compact_model_id?: string;
+  attachments?: Attachment[];
+  task_results?: string[];
+  inherited?: boolean;
+  environment?: {
+    os: string;
+    arch: string;
+    host: string;
+    user: string;
+    workdir: string;
+    time: string;
+  };
+}
 export interface RawMessage {
+  uploads?: UploadAttachment[];
   id: number;
   item: StoredItem;
+  meta?: MessageMeta | null;
   created_at?: number;
   key?: string;
   sequence?: number;
   usage?: Record<string, unknown> | null;
+  metering?: Metering | null;
   streaming?: boolean;
   sending?: boolean;
   failed?: boolean;
@@ -50,11 +89,16 @@ export interface Compaction {
   through_id: number;
   summary: string;
   usage?: Record<string, unknown> | null;
+  metering?: Metering | null;
   created_at: number;
 }
 export interface Row {
+  attachments?: Attachment[];
+  uploads?: UploadAttachment[];
   key: string;
-  kind: "user" | "assistant" | "tool" | "system";
+  messageId?: number;
+  kind: "user" | "assistant" | "tool" | "system" | "usage";
+  usageRecord?: UsageRecord;
   at?: number;
   content?: string;
   images?: string[];
@@ -117,6 +161,7 @@ export function buildRows(
       code: "compacted",
       content: summary.summary,
       at: summary.created_at,
+      usageRecord: summary.usage ? { usage: summary.usage, metering: summary.metering } : undefined,
     });
   };
   for (const message of messages) {
@@ -128,16 +173,22 @@ export function buildRows(
       appendCompaction(summaries[compactIndex++]);
     }
     const item = message.item;
+    if (item.type === "message" && item.role === "user" && message.meta?.task_results) {
+      continue;
+    }
     const key = message.key || `message:${message.id}`;
     const at = message.created_at;
     switch (item.type) {
       case "message":
         rows.push({
           key,
+          messageId: message.id,
           at,
           kind: item.role === "user" ? "user" : "assistant",
           content: itemText(item),
           images: images(item.content),
+          attachments: message.meta?.attachments,
+          uploads: message.uploads,
           streaming: message.streaming,
           sending: message.sending,
           failed: message.failed,
@@ -201,6 +252,14 @@ export function buildRows(
         row.status = "done";
         break;
       }
+    }
+    if (message.usage) {
+      rows.push({
+        key: `usage:${key}`,
+        kind: "usage",
+        at,
+        usageRecord: { usage: message.usage, metering: message.metering },
+      });
     }
     while (
       compactIndex < summaries.length &&

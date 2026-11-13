@@ -23,8 +23,9 @@ export function paths(env = process.env, platform = process.platform, home = os.
   return {
     root,
     config: path.join(root, "config.json"),
-    db: path.join(root, "chat.db"),
+    db: path.join(root, "agent.db"),
     images: path.join(root, "images"),
+    attachments: path.join(root, "attachments"),
   };
 }
 
@@ -33,13 +34,11 @@ export function validateConfig(config) {
     throw new Error("配置必须是对象");
   }
   const fields = [
-    "url",
-    "key",
-    "model",
-    "protocol",
-    "context_window",
+    "models",
     "system",
     "compact_at",
+    "compact_on_cache_expiry",
+    "cache_ttl",
     "keep",
     "compact_system",
     "compact_prefix",
@@ -54,48 +53,59 @@ export function validateConfig(config) {
       throw new Error(`未知配置字段：${key}`);
     }
   }
-  for (const key of [
-    "url",
-    "key",
-    "model",
-    "protocol",
-    "system",
-    "compact_system",
-    "compact_prefix",
-    "workdir",
-  ]) {
+  for (const key of ["system", "compact_system", "compact_prefix", "workdir"]) {
     if (typeof config[key] !== "string") {
       throw new Error(`${key} 必须是字符串`);
     }
   }
-  if (!["responses", "anthropic-messages"].includes(config.protocol)) {
-    throw new Error("protocol 必须是 responses 或 anthropic-messages");
+  if (!Array.isArray(config.models)) {
+    throw new Error("models 必须是数组");
   }
-  for (const key of [
-    "context_window",
-    "compact_at",
-    "keep",
-    "run_timeout",
-    "timeout",
-    "max_output",
-  ]) {
-    const minimum = key === "context_window" ? 0 : 1;
-    if (!Number.isSafeInteger(config[key]) || config[key] < minimum) {
-      throw new Error(`${key} 必须是大于等于 ${minimum} 的整数`);
+  const ids = new Set();
+  for (const model of config.models) {
+    if (!model || typeof model !== "object" || Array.isArray(model)) {
+      throw new Error("模型配置必须是对象");
     }
-  }
-  if (config.context_window > 0 && config.compact_at >= config.context_window) {
-    throw new Error("压缩阈值必须小于模型上下文窗口");
-  }
-  if (config.url) {
+    for (const key of Object.keys(model)) {
+      if (!["id", "name", "model", "url", "key", "protocol", "context_window"].includes(key)) {
+        throw new Error(`未知模型字段：${key}`);
+      }
+    }
+    for (const key of ["id", "name", "model", "url", "key", "protocol"]) {
+      if (typeof model[key] !== "string" || !model[key].trim()) {
+        throw new Error(`模型 ${key} 不能为空`);
+      }
+    }
+    if (!/^[a-zA-Z0-9._:-]{1,100}$/.test(model.id) || ids.has(model.id)) {
+      throw new Error("模型标识无效或重复");
+    }
+    ids.add(model.id);
+    if (!["responses", "chat-completions", "anthropic-messages"].includes(model.protocol)) {
+      throw new Error("模型协议必须是 responses、chat-completions 或 anthropic-messages");
+    }
+    if (
+      !Number.isSafeInteger(model.context_window) ||
+      (model.context_window !== 0 && model.context_window < 2)
+    ) {
+      throw new Error("模型上下文窗口必须为 0 或大于 1 的整数");
+    }
     let address;
     try {
-      address = new URL(config.url);
+      address = new URL(model.url);
     } catch {
       throw new Error("模型接口地址无效");
     }
     if (!["http:", "https:"].includes(address.protocol)) {
       throw new Error("模型接口地址必须使用 HTTP 或 HTTPS");
+    }
+  }
+  if (typeof config.compact_on_cache_expiry !== "boolean") {
+    throw new Error("compact_on_cache_expiry 必须是布尔值");
+  }
+  for (const key of ["compact_at", "cache_ttl", "keep", "run_timeout", "timeout", "max_output"]) {
+    const minimum = 1;
+    if (!Number.isSafeInteger(config[key]) || config[key] < minimum) {
+      throw new Error(`${key} 必须是大于等于 ${minimum} 的整数`);
     }
   }
   if (
@@ -112,8 +122,8 @@ export function validateConfig(config) {
       throw new Error(`未知 api 字段：${key}`);
     }
   }
-  if (typeof config.api.token !== "string" || config.api.token.length < 16) {
-    throw new Error("api.token 至少需要 16 字符");
+  if (typeof config.api.token !== "string" || config.api.token.length < 6) {
+    throw new Error("api.token 至少需要 6 字符");
   }
   const listen =
     typeof config.api.listen === "string" && /^(?:\[[^\]]+\]|[^:]*):(\d+)$/.exec(config.api.listen);
@@ -149,18 +159,6 @@ export function loadConfig(locations = paths(), env = process.env) {
     saveConfig(locations, config);
   }
   validateConfig(config);
-  if (env.AGENT_URL) {
-    config.url = env.AGENT_URL;
-  }
-  if (env.AGENT_KEY) {
-    config.key = env.AGENT_KEY;
-  }
-  if (env.AGENT_MODEL) {
-    config.model = env.AGENT_MODEL;
-  }
-  if (env.AGENT_PROTOCOL) {
-    config.protocol = env.AGENT_PROTOCOL;
-  }
   if (env.AGENT_SYSTEM) {
     config.system = env.AGENT_SYSTEM;
   }
@@ -174,20 +172,43 @@ export function loadConfig(locations = paths(), env = process.env) {
   return config;
 }
 
-export function requireModel(config) {
-  if (!config.url || !config.key || !config.model) {
-    throw new Error("尚未配置模型：请在设置中填写接口地址、API Key 和模型");
+// 配置表是模型连接的唯一来源；执行前取独立快照，设置修改不影响进行中的请求。
+export function requireModel(config, id) {
+  const model = config.models.find((item) => item.id === id);
+  if (!model) {
+    throw new Error("请先在设置中添加并选择模型");
   }
+  return model;
 }
 
-export function renderPrompt(text, workdir = process.cwd()) {
-  const values = {
-    os: process.platform === "win32" ? "windows" : process.platform,
-    arch: process.arch === "x64" ? "amd64" : process.arch,
-    host: os.hostname(),
-    user: os.userInfo().username,
-    workdir: workdir || process.cwd(),
-    time: new Date().toISOString(),
+export function runConfig(config, id, compactId) {
+  if (!id) {
+    throw new Error("请选择对话模型");
+  }
+  if (!compactId) {
+    throw new Error("请选择压缩模型");
+  }
+  const model = requireModel(config, id);
+  const compact = requireModel(config, compactId);
+  const compactAt =
+    model.context_window > 0
+      ? Math.min(config.compact_at, model.context_window - 1)
+      : config.compact_at;
+  return {
+    ...config,
+    ...model,
+    model_id: model.id,
+    compact_at: compactAt,
+    compact_connection: { ...compact },
   };
-  return text.replace(/\{\{(\w+)\}\}/g, (match, name) => values[name] ?? match);
+}
+
+export function modelView(model) {
+  return {
+    id: model.id,
+    name: model.name,
+    model: model.model,
+    protocol: model.protocol,
+    context_window: model.context_window,
+  };
 }

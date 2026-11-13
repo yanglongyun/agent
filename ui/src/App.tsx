@@ -1,3 +1,5 @@
+import * as Tooltip from "@radix-ui/react-tooltip";
+import { Mark } from "./icons/Icon";
 import { useEffect } from "react";
 
 import { AppRoutes } from "./router";
@@ -20,7 +22,12 @@ export function App() {
   }, [auth]);
 
   if (auth === "checking") {
-    return null;
+    return (
+      <main className="connection-page">
+        <Mark size={38} />
+        <span>正在连接工作区…</span>
+      </main>
+    );
   }
   if (auth === "error") {
     return (
@@ -33,9 +40,9 @@ export function App() {
     );
   }
   return (
-    <>
+    <Tooltip.Provider delayDuration={350} skipDelayDuration={100}>
       <AppRoutes />
       <ToastHost />
-    </>
+    </Tooltip.Provider>
   );
 }
