@@ -13,7 +13,7 @@ import { costLabel, type OwnerCost } from "../thread/metering";
 import { updateSessionCost } from "../thread/store";
 import "./tasks.css";
 
-interface Task extends OwnerCost {
+export interface Task extends OwnerCost {
   id: string;
   session_id: string;
   parent_task_id: string | null;
@@ -24,12 +24,28 @@ interface Task extends OwnerCost {
   error: string | null;
 }
 
-export function TasksPanel({ sessionId, busy }: { sessionId: string; busy: boolean }) {
+export interface SessionActivity {
+  tasks: Task[];
+  processes: ShellJob[];
+  error: string;
+  runningCount: number;
+  totalCount: number;
+  totalCost: OwnerCost;
+  updateTask: (task: Task) => void;
+  updateProcess: (record: ShellJob) => void;
+}
+
+export function useSessionActivity(sessionId: string, busy: boolean): SessionActivity {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [processes, setProcesses] = useState<ShellJob[]>([]);
-  const [selected, setSelected] = useState<{ id: string; kind: "agent" | "shell" } | null>(null);
   const [error, setError] = useState("");
   useEffect(() => {
+    setTasks([]);
+    setProcesses([]);
+    setError("");
+    if (!sessionId) {
+      return;
+    }
     let current = true;
     let timer: ReturnType<typeof setTimeout>;
     async function load() {
@@ -65,83 +81,109 @@ export function TasksPanel({ sessionId, busy }: { sessionId: string; busy: boole
       clearTimeout(timer);
     };
   }, [sessionId, busy]);
-  if (error && !tasks.length && !processes.length) {
-    return <p className="tasks-note">{error}</p>;
-  }
-  if (!tasks.length && !processes.length) {
-    return null;
-  }
-  const running = tasks.filter(active).length + processes.filter(active).length;
-  const totals = { cost: { amount: 0, currency: "USD", unpriced_requests: 0 }, request_count: 0 };
+
+  const runningCount = tasks.filter(active).length + processes.filter(active).length;
+  const totalCount = tasks.length + processes.length;
+  const totalCost: OwnerCost = {
+    cost: { amount: 0, currency: "USD", unpriced_requests: 0 },
+    request_count: 0,
+  };
   let nano = 0;
   for (const task of tasks) {
     nano += Math.round(task.cost.amount * 1e9);
-    totals.cost.unpriced_requests += task.cost.unpriced_requests;
-    totals.request_count += task.request_count;
+    totalCost.cost.unpriced_requests += task.cost.unpriced_requests;
+    totalCost.request_count += task.request_count;
   }
-  totals.cost.amount = nano / 1e9;
+  totalCost.cost.amount = nano / 1e9;
+  return {
+    tasks,
+    processes,
+    error,
+    runningCount,
+    totalCount,
+    totalCost,
+    updateTask: (task) =>
+      setTasks((current) => current.map((row) => (row.id === task.id ? task : row))),
+    updateProcess: (record) =>
+      setProcesses((current) => current.map((row) => (row.id === record.id ? record : row))),
+  };
+}
+
+export function TasksSheet({
+  activity,
+  onClose,
+}: {
+  activity: SessionActivity;
+  onClose: () => void;
+}) {
+  const [selected, setSelected] = useState<{ id: string; kind: "agent" | "shell" } | null>(null);
+  const { tasks, processes, error, runningCount, totalCost, updateTask, updateProcess } = activity;
+  let subtitle = "暂无活动任务或后台命令";
+  if (tasks.length || processes.length) {
+    const statusText = runningCount > 0 ? `${runningCount} 项执行中` : "全部已结束";
+    subtitle = tasks.length > 0 ? `${statusText} · ${costLabel(totalCost)}` : statusText;
+  }
+
   return (
     <>
-      <details className="tasks-panel">
-        <summary>
-          <span className="task-tray-heading">
-            {running > 0 ? (
-              <i className="task-tray-dot" aria-hidden="true" />
-            ) : (
-              <Icon name="terminal" size={14} />
-            )}
-            任务 <span className="task-tray-count">{tasks.length + processes.length}</span>
-          </span>
-          <span className="task-tray-info" title={tasks.length > 0 ? costLabel(totals) : undefined}>
-            {running > 0 ? `${running} 项执行中` : "已结束"}
-            {tasks.length > 0 ? ` · ${costLabel(totals)}` : ""}
-          </span>
-          <span className="task-tray-chevron" aria-hidden="true">
-            <Icon name="chev" size={14} />
-          </span>
-        </summary>
-        {error && <p className="tasks-tray-error">{error}</p>}
-        <ul>
-          {tasks.map((task) => (
-            <li key={task.id}>
-              <button
-                type="button"
-                className="task-open"
-                onClick={() => setSelected({ id: task.id, kind: "agent" })}
-              >
-                <span className="task-title">{task.task}</span>
-                <span className={`task-status ${task.status}`}>{labels[task.status]}</span>
-              </button>
-              <small>
-                子 Agent · {task.model} · {costLabel(task)}
-              </small>
-            </li>
-          ))}
-          {processes.map((record) => (
-            <li key={record.id}>
-              <button
-                type="button"
-                className="task-open"
-                onClick={() => setSelected({ id: record.id, kind: "shell" })}
-              >
-                <span className="task-title">{record.command}</span>
-                <span className={`task-status ${record.status}`}>{labels[record.status]}</span>
-              </button>
-              <small>
-                后台命令{record.exit_code !== null ? ` · 退出码 ${record.exit_code}` : ""}
-              </small>
-            </li>
-          ))}
-        </ul>
-      </details>
+      <Sheet
+        title="任务与后台命令"
+        className="tasks-sheet"
+        onClose={onClose}
+        footer={
+          <button type="button" className="btn btn-quiet" onClick={onClose}>
+            关闭
+          </button>
+        }
+      >
+        <p className="tasks-sheet-sub">{subtitle}</p>
+        {error && <p className="sheet-error">{error}</p>}
+        {!tasks.length && !processes.length ? (
+          <div className="tasks-empty">
+            <Icon name="terminal" size={24} />
+            <span>当前对话还没有委派子任务或后台命令</span>
+          </div>
+        ) : (
+          <ul className="tasks-list">
+            {tasks.map((task) => (
+              <li key={task.id}>
+                <button
+                  type="button"
+                  className="task-open"
+                  onClick={() => setSelected({ id: task.id, kind: "agent" })}
+                >
+                  <span className="task-title">{task.task}</span>
+                  <span className={`task-status ${task.status}`}>{labels[task.status]}</span>
+                </button>
+                <small>
+                  子 Agent · {task.model} · {costLabel(task)}
+                </small>
+              </li>
+            ))}
+            {processes.map((record) => (
+              <li key={record.id}>
+                <button
+                  type="button"
+                  className="task-open"
+                  onClick={() => setSelected({ id: record.id, kind: "shell" })}
+                >
+                  <span className="task-title">{record.command}</span>
+                  <span className={`task-status ${record.status}`}>{labels[record.status]}</span>
+                </button>
+                <small>
+                  后台命令{record.exit_code !== null ? ` · 退出码 ${record.exit_code}` : ""}
+                </small>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Sheet>
       {selected?.kind === "agent" && (
         <TaskDetail
           taskId={selected.id}
           onClose={() => setSelected(null)}
           onOpen={(id) => setSelected({ id, kind: "agent" })}
-          onChanged={(task) =>
-            setTasks((current) => current.map((row) => (row.id === task.id ? task : row)))
-          }
+          onChanged={updateTask}
         />
       )}
       {selected?.kind === "shell" && (
@@ -149,9 +191,7 @@ export function TasksPanel({ sessionId, busy }: { sessionId: string; busy: boole
           key={selected.id}
           processId={selected.id}
           onClose={() => setSelected(null)}
-          onChanged={(record) =>
-            setProcesses((current) => current.map((row) => (row.id === record.id ? record : row)))
-          }
+          onChanged={updateProcess}
         />
       )}
     </>

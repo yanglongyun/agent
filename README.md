@@ -196,15 +196,15 @@ CREATE INDEX idx_compactions_session ON compactions(session_id, id);
 
 ## 用量与预估费用
 
-AI 回答后的复制按钮旁提供「分支」。分支复制截至该回答的对话、工具记录、图片及当时已有的摘要，创建后打开新对话，标题为「原标题（2）」，同名时递增编号。图片独立保存，删除原对话不会影响分支；历史环境快照保持原样。继承内容不重复计费，分支累计费用从零开始，不复制原对话中的运行任务或命令。接口为 `POST /api/sessions/:id/branches`，请求体 `{ "message_id": 回答消息ID }`。
+AI 回答后的操作栏提供复制与「更多」菜单（含「从此处创建分支」、本轮「用量与费用」和「执行过程」）。分支复制截至该回答的对话、工具记录、图片及当时已有的摘要，创建后打开新对话，标题为「原标题（2）」，同名时递增编号。图片独立保存，删除原对话不会影响分支；历史环境快照保持原样。继承内容不重复计费，分支累计费用从零开始，不复制原对话中的运行任务或命令。接口为 `POST /api/sessions/:id/branches`，请求体 `{ "message_id": 回答消息ID }`。
 
 模型响应的 `usage` 按厂商原样保存，Claude 不补 total_tokens 或改写 input_tokens；Chat 保留 prompt_tokens、completion_tokens 及其原生明细，不改名。`server/metering/index.js` 负责压缩用量和费用计算，`server/metering/rules.js` 维护模型标价；支持 gpt-6-luna、gpt-6.1-terra、gpt-6.1-sol（Responses 和 Chat 共用同一份模型价格）、claude-fable-5-2、claude-sonnet-5-5、claude-opus-5-5。
 
 规则按 USD / 百万 token 计价，价格依据 [OpenAI 官方价格](https://developers.openai.com/api/docs/pricing)和 [Claude 官方价格](https://platform.claude.com/docs/en/about-claude/pricing)，于 2026-11-10 核对。普通输入、输出、缓存读取和不同 TTL 的缓存写入分别收费，GPT 输入超过 272000 token 时使用长上下文价格，推理 token 不重复收费。网关请求按公开标价预估，不代表网关实际扣费。未知模型、未知计费档位或不完整用量不会显示为零费用。
 
-计量表保存当次模型、端点、原始用量对应的上下文计数以及价格明细快照；修改规则不会重算历史费用。回答下方汇总同一用户轮次的普通模型请求；悬浮或聚焦用量文字显示原始 usage，多次请求显示各原始对象的数组。压缩费用在对应摘要内单独展示。Web 与 CLI 共用保存逻辑，消息、usage 和计量快照在同一事务提交。
+计量表保存当次模型、端点、原始用量对应的上下文计数以及价格明细快照；修改规则不会重算历史费用。主对话流保持纯聊天呈现，不内联工具调用与 Token 计数；每条回答的「更多」菜单可打开该轮的用量与费用弹窗（汇总多次请求及原始 usage JSON），摘要弹窗展示压缩详情与用量。Web 与 CLI 共用保存逻辑，消息、usage 和计量快照在同一事务提交。
 
-sessions 和 tasks 的 total_cost_nanos 以十亿分之一美元累计已记录费用，request_count 和 unpriced_requests 保存计量请求数及未计费数；新增明细与累计字段的原子更新在同一事务提交。任务金额只包含自身请求和自身压缩；会话金额包含主对话、全部子任务及各自压缩，不重复累计父子任务。输入框底部显示会话总额；分页、刷新和重新打开读取累计快照，不从当前加载的消息重算。尚未计费的请求单独显示，不作为零费用处理。
+sessions 和 tasks 的 total_cost_nanos 以十亿分之一美元累计已记录费用，request_count 和 unpriced_requests 保存计量请求数及未计费数；新增明细与累计字段的原子更新在同一事务提交。任务金额只包含自身请求和自身压缩；会话金额包含主对话、全部子任务及各自压缩，不重复累计父子任务。对话累计总额收进顶栏右上角「更多 → 对话详情与用量」弹窗；分页、刷新和重新打开读取累计快照，不从当前加载的消息重算。尚未计费的请求单独显示，不作为零费用处理。
 
 图片保存在数据目录的 `images/` 下。图片工具结果使用标准 `function_call_output.output` 数组，数据库和事件中的 `input_image.image_url` 只保存 `/api/images/文件名`，不保存 Base64。AI 请求入口读取图片文件，仅在本次请求中替换为 data URL；原始消息不变。前端通过带登录鉴权的图片接口显示工具图片。业务层通过运行配置 `images_dir` 指定图片目录。
 
@@ -295,7 +295,7 @@ npm run format:check
 
 ### 页面路由
 
-界面采用类似 Messenger 的气泡聊天布局，使用统一的浅色、深色设计变量与 Lucide 图标。Radix 提供弹窗、菜单、提示和用量浮层的键盘交互、焦点管理及视口避让。顶栏展示头像、对话标题、模型切换与连接/回复状态；侧栏支持搜索对话与运行状态指示；消息区与单行胶囊输入区独立布局，浏览历史时可回到最新消息；设置按模型、指令、压缩、执行与外观分区，保存操作固定在底部。
+界面采用类似 Messenger 的气泡聊天布局，使用统一的浅色、深色设计变量与 Lucide 图标。Radix 提供弹窗、菜单、提示和详情浮层的键盘交互、焦点管理及视口避让。顶栏展示头像、对话标题、模型切换、连接/回复状态与右上角「更多」菜单（收纳任务与后台命令、对话详情与用量、重命名及删除）；侧栏支持搜索对话与头像在线状态指示；消息区只呈现聊天气泡与打字状态（工具过程与用量收进每条回答的「更多」菜单），搭配单行胶囊输入区，浏览历史时可回到最新消息；设置按模型、指令、压缩、执行与外观分区，保存操作固定在底部。
 
 输入框与附件预览参考并适配了 [Ruixen UI Claude Chat Input](https://ruixen.com/docs/components/claude-chat-input) 的免费源码，适配组件位于 `ui/src/components/ruixen/ChatInput.tsx`，MIT 许可见 [ui/public/licenses/Ruixen-UI-MIT.md](ui/public/licenses/Ruixen-UI-MIT.md)。项目继续使用 Vite 和现有 CSS 变量，不依赖 Ruixen Pro、Next.js 或 Tailwind。
 
@@ -326,6 +326,6 @@ URL 决定当前页面和会话。支持直接打开、刷新、前进后退；�
 
 后台命令跨主对话回复运行，不设自动超时；停止或删除会话、服务退出时清理命令及其子进程。子 Agent 启动的后台命令在该任务结束时清理。每个会话最多同时运行 8 条命令。Web 和 CLI 共用执行器及 shell_jobs 记录；CLI 退出前清理命令。服务意外退出后，历史记录显示已中断，不自动重启命令。
 
-界面在输入框上方的任务托盘区分子 Agent 和后台命令。后台命令弹窗显示命令、工作目录、输出与退出码，可发送输入、结束输入和停止命令。stdio 操作不生成重复条目，后台命令不计模型费用。
+界面从顶栏右上角「更多 → 任务与后台命令」弹窗区分子 Agent 和后台命令（有任务运行中时右上角显示状态绿点）。后台命令弹窗显示命令、工作目录、输出与退出码，可发送输入、结束输入和停止命令。stdio 操作不生成重复条目，后台命令不计模型费用。
 
 接口：GET /api/processes?session_id=…、GET /api/processes/:id、POST /api/processes/:id/stdio（action 为 write、close 或 cancel，write 传 input）。

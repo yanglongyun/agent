@@ -40,7 +40,7 @@ export function Sidebar() {
   const shell = useShell();
   const location = useLocation();
   const navigate = useNavigate();
-  const { threads, currentId, busy, status } = useThread();
+  const { threads, currentId, busy } = useThread();
   const theme = useTheme((state) => state.mode);
   const [search, setSearch] = useState("");
   const [renaming, setRenaming] = useState<Thread | null>(null);
@@ -97,6 +97,21 @@ export function Sidebar() {
       <div className="side-head">
         <span className="side-brand">聊天</span>
         <span className="grow" />
+        <Hint text="新对话">
+          <Link
+            to="/"
+            className="icon-btn side-compose"
+            aria-label="新对话"
+            onClick={() => {
+              shell.closeDrawer();
+              if (location.pathname === "/") {
+                createDraft();
+              }
+            }}
+          >
+            <Icon name="compose" size={18} />
+          </Link>
+        </Hint>
         <Hint text={shell.drawer ? "关闭导航" : "收起侧栏"}>
           <button
             className="icon-btn side-toggle"
@@ -107,20 +122,6 @@ export function Sidebar() {
           </button>
         </Hint>
       </div>
-      <Link
-        to="/"
-        className="side-new"
-        onClick={() => {
-          shell.closeDrawer();
-          if (location.pathname === "/") {
-            createDraft();
-          }
-        }}
-      >
-        <Icon name="plus" size={18} />
-        <span>新对话</span>
-        <Icon name="compose" size={15} />
-      </Link>
       <div className="side-search">
         <Icon name="search" size={15} />
         <input
@@ -234,13 +235,6 @@ export function Sidebar() {
             <Icon name={themeIcons[theme]} size={17} />
           </button>
         </Hint>
-      </div>
-      <div className="side-workspace">
-        <span>
-          <span className="workspace-dot" />
-          本地工作区
-        </span>
-        <span>{status?.version ? `v${status.version}` : ""}</span>
       </div>
     </>
   );

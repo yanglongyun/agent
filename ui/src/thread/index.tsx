@@ -7,6 +7,7 @@ import { useShell } from "../shell/layout";
 import { Composer } from "./Composer";
 import { MessageStream } from "./MessageStream";
 import { ModelSelect } from "./ModelSelect";
+import { ThreadMenu } from "./ThreadMenu";
 import { createDraft, openThread, threadTitle, useThread } from "./store";
 
 // 标题下的副标题只显示一种状态：断线 > 正在回复 > 没有模型 > 模型选择。
@@ -67,7 +68,7 @@ export function ThreadView() {
         >
           <Icon name="panel" size={17} />
         </button>
-        <Mark size={38} />
+        <Mark size={36} />
         <div className="topbar-main">
           <span className="topbar-title clip">{title}</span>
           <TopbarStatus />
@@ -80,6 +81,7 @@ export function ThreadView() {
               </Link>
             </Hint>
           )}
+          <ThreadMenu />
         </div>
       </header>
       {loadError ? (

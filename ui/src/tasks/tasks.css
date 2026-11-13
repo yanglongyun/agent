@@ -1,110 +1,50 @@
-/* 与输入框叠成两层：托盘略内收，底边由前面的输入框遮住。 */
-.tasks-panel {
-  position: relative;
-  z-index: 0;
-  width: calc(100% - 36px);
-  max-width: calc(var(--content-width) - 36px);
-  margin: 0 auto -18px;
-  padding-bottom: 18px;
-  border: 1px solid var(--edge);
-  border-bottom: 0;
-  border-radius: 16px 16px 0 0;
-  background: var(--surface-side);
-  overflow: hidden;
-  max-height: min(320px, 42vh);
+.tasks-sheet.sheet {
+  width: min(560px, calc(100vw - 24px));
+}
+.tasks-sheet-sub {
+  margin: 0 0 14px;
+  color: var(--text-3);
   font-size: 13px;
 }
-.composer-wrap .composer {
-  position: relative;
-  z-index: 1;
-}
-.tasks-panel summary {
+.tasks-empty {
   display: flex;
+  flex-direction: column;
   align-items: center;
   gap: 10px;
-  min-height: 42px;
-  padding: 0 12px;
-  cursor: pointer;
-  list-style: none;
-  color: var(--text-2);
-}
-.tasks-panel summary::-webkit-details-marker {
-  display: none;
-}
-.tasks-panel summary:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: -3px;
-  border-radius: 12px;
-}
-.task-tray-heading {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  flex: none;
-  font-weight: 550;
-}
-.task-tray-count {
-  display: inline-grid;
-  place-items: center;
-  min-width: 19px;
-  height: 19px;
-  padding: 0 5px;
-  border-radius: 7px;
-  background: var(--fill-2);
-  color: var(--text-3);
+  padding: 36px 16px;
+  color: var(--text-4);
   font-size: 13px;
-  font-variant-numeric: tabular-nums;
+  text-align: center;
 }
-.task-tray-info {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  text-align: right;
-  color: var(--text-3);
-  font-size: 13px;
-}
-.task-tray-dot {
-  width: 6px;
-  height: 6px;
-  margin: 0 4px;
-  border-radius: 50%;
-  background: var(--accent);
-}
-.task-tray-chevron {
-  flex: none;
-  color: var(--text-3);
-  transform: rotate(-90deg);
-}
-.tasks-panel[open] .task-tray-chevron {
-  transform: rotate(90deg);
-}
-.tasks-panel ul {
+.tasks-list {
   list-style: none;
-  padding: 4px 7px;
+  padding: 0;
   margin: 0;
-  border-top: 1px solid var(--edge-soft);
-  max-height: calc(min(320px, 42vh) - 60px);
-  overflow-y: auto;
-  overscroll-behavior: contain;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
-.tasks-panel li {
-  padding: 9px 8px;
-  border-radius: 9px;
+.tasks-list li {
+  padding: 12px 14px;
+  border: 1px solid var(--edge-soft);
+  border-radius: 14px;
+  background: var(--fill);
+  transition: background 0.16s;
 }
-.tasks-panel li:hover,
-.tasks-panel li:focus-within {
+.tasks-list li:hover,
+.tasks-list li:focus-within {
   background: var(--hover);
 }
 .task-open {
   width: 100%;
   text-align: left;
   display: flex;
-  gap: 16px;
-  align-items: baseline;
+  gap: 14px;
+  align-items: center;
   text-decoration: none;
   color: var(--text-1);
+  font-size: 14px;
+  font-weight: 550;
 }
 .task-title {
   flex: 1;
@@ -115,35 +55,35 @@
 }
 .task-status {
   flex: none;
+  padding: 2px 9px;
+  border-radius: 99px;
+  background: var(--fill-2);
   color: var(--text-3);
-  font-size: 13px;
+  font-size: 12px;
+  font-weight: 500;
 }
 .task-status.running {
+  background: var(--ok-soft);
   color: var(--ok);
 }
 .task-status.failed,
 .task-status.interrupted {
+  background: var(--danger-soft);
   color: var(--danger);
 }
-.tasks-panel small {
+.tasks-list small {
   display: block;
   color: var(--text-3);
-  margin-top: 4px;
-  font-size: 13px;
+  margin-top: 5px;
+  font-size: 12px;
 }
 .tasks-note {
-  width: 100%;
-  max-width: var(--content-width);
-  margin: 0 auto 8px;
+  margin: 0;
   font-size: 13px;
   color: var(--text-3);
 }
-.tasks-tray-error {
-  padding: 0 14px;
-  color: var(--danger);
-}
 .task-detail.sheet {
-  width: min(740px, calc(100vw - 32px));
+  width: min(740px, calc(100vw - 24px));
 }
 .task-detail .sheet-body {
   overscroll-behavior: contain;
@@ -171,8 +111,9 @@
   overflow-wrap: anywhere;
 }
 .task-parent {
-  color: var(--ok);
+  color: var(--accent);
   font-size: 13px;
+  font-weight: 550;
   margin-bottom: 16px;
 }
 .task-state {
@@ -180,9 +121,7 @@
   color: var(--text-3);
   font-size: 13px;
 }
-.task-state.running {
-  color: var(--ok);
-}
+.task-state.running,
 .task-state.completed {
   color: var(--ok);
 }
@@ -200,7 +139,7 @@
   color: var(--text-3);
 }
 .task-inherited input {
-  accent-color: var(--ok);
+  accent-color: var(--accent);
 }
 .task-transcript {
   display: flex;
@@ -227,8 +166,8 @@
 .process-output {
   padding: 14px;
   border: 1px solid var(--edge);
-  border-radius: 10px;
-  background: var(--surface-side);
+  border-radius: 12px;
+  background: var(--fill);
   font-family: var(--font-mono);
   font-size: 13px;
   line-height: 1.65;
@@ -251,8 +190,8 @@
 .process-input textarea {
   padding: 10px 12px;
   border: 1px solid var(--edge);
-  border-radius: 10px;
-  background: var(--surface);
+  border-radius: 12px;
+  background: var(--fill);
   color: var(--text-1);
   resize: vertical;
 }

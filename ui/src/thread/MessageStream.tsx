@@ -1,22 +1,18 @@
+import * as Dropdown from "@radix-ui/react-dropdown-menu";
 import { useNavigate } from "react-router";
-// 消息流 —— 按轮收纳:
-//   · 一条用户消息起一轮。轮内的思考 / 工具 / 中间文本是过程,最后那条正文是结果。
-//   · 轮完成且有最终文本 → 过程整体收进「已工作X」折叠条,最终文本站在外面;
-//   · 轮还在进行中(或没有最终文本,比如中途停掉)→ 平铺,过程依次展示;
-//   · 用户消息是右侧灰底气泡;助理最终文本无气泡全宽 markdown,
-//     悬停出现复制行,最后一条常显。
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import { Icon, Mark, type IconName } from "../icons/Icon";
 import { copyText } from "../lib/clipboard";
-import { TurnEntries, TurnFold, Working, type TurnEntry } from "./Process";
-import { dayLabel, renderMd } from "./format";
-import { branchThread, loadOlder, retrySend, useThread } from "./store";
-import { seedDraft } from "./draft";
-import { buildRows, type Row, type UsageRecord } from "./thread";
-import { Usage } from "./Usage";
-import { AttachmentInfo } from "./AttachmentInfo";
 import { Hint } from "../overlay/Hint";
+import { Sheet } from "../overlay/Sheet";
+import { AttachmentInfo } from "./AttachmentInfo";
+import { dayLabel, formatDuration, renderMd } from "./format";
+import { usageSummary } from "./metering";
+import { TurnEntries, Working, type TurnEntry } from "./Process";
+import { seedDraft } from "./draft";
+import { branchThread, loadOlder, retrySend, useThread } from "./store";
+import { buildRows, type Row, type UsageRecord } from "./thread";
 
 /** 空白对话的起手式:每一条都是这个 Agent 真做得到的事。点了填进输入框,不直接发。 */
 const STARTERS: Array<{
@@ -53,18 +49,97 @@ type Block =
       row: Row;
       final?: boolean;
       usage?: UsageRecord[];
-    }
-  | {
-      kind: "flat";
-      key: string;
-      items: TurnEntry[];
-    }
-  | {
-      kind: "turn";
-      key: string;
-      items: TurnEntry[];
-      durationMs: number | null;
+      process?: TurnEntry[];
+      durationMs?: number | null;
     };
+
+function AssistantActions({
+  row,
+  always,
+  usage,
+  process,
+  durationMs,
+  busy,
+  branchingMessageId,
+  onBranch,
+  onOpenUsage,
+  onOpenProcess,
+}: {
+  row: Row;
+  always: boolean;
+  usage: UsageRecord[];
+  process: TurnEntry[];
+  durationMs: number | null;
+  busy: boolean;
+  branchingMessageId: number;
+  onBranch: (messageId: number) => void;
+  onOpenUsage: (records: UsageRecord[]) => void;
+  onOpenProcess: (items: TurnEntry[], durationMs: number | null) => void;
+}) {
+  const messageId = row.messageId;
+  const canBranch = messageId !== undefined && messageId > 0 && !row.streaming;
+  const hasMore = canBranch || usage.length > 0 || process.length > 0;
+
+  return (
+    <div className={`act-row${always ? " always" : ""}`}>
+      <Hint text="复制回答">
+        <button
+          type="button"
+          className="act"
+          aria-label="复制回答"
+          onClick={() => void copyText(row.content)}
+        >
+          <Icon name="copy" size={15} />
+        </button>
+      </Hint>
+      {hasMore && (
+        <Dropdown.Root>
+          <Dropdown.Trigger asChild>
+            <button type="button" className="act" aria-label="更多操作">
+              <Icon name="more" size={15} />
+            </button>
+          </Dropdown.Trigger>
+          <Dropdown.Portal>
+            <Dropdown.Content
+              className="dropdown-content msg-more-menu"
+              align="start"
+              sideOffset={6}
+              collisionPadding={12}
+            >
+              {canBranch && (
+                <Dropdown.Item
+                  className="dropdown-item"
+                  disabled={busy || branchingMessageId > 0}
+                  onSelect={() => onBranch(messageId)}
+                >
+                  <Icon name="branch" size={15} />
+                  <span>
+                    {branchingMessageId === messageId ? "正在创建分支…" : "从此处创建分支"}
+                  </span>
+                </Dropdown.Item>
+              )}
+              {usage.length > 0 && (
+                <Dropdown.Item className="dropdown-item" onSelect={() => onOpenUsage(usage)}>
+                  <Icon name="layers" size={15} />
+                  <span>用量与费用</span>
+                </Dropdown.Item>
+              )}
+              {process.length > 0 && (
+                <Dropdown.Item
+                  className="dropdown-item"
+                  onSelect={() => onOpenProcess(process, durationMs)}
+                >
+                  <Icon name="terminal" size={15} />
+                  <span>执行过程（{process.length} 步）</span>
+                </Dropdown.Item>
+              )}
+            </Dropdown.Content>
+          </Dropdown.Portal>
+        </Dropdown.Root>
+      )}
+    </div>
+  );
+}
 
 export function MessageStream() {
   const navigate = useNavigate();
@@ -93,6 +168,13 @@ export function MessageStream() {
   const [atBottom, setAtBottom] = useState(true);
   const innerRef = useRef<HTMLDivElement>(null);
 
+  const [usageModal, setUsageModal] = useState<UsageRecord[] | null>(null);
+  const [processModal, setProcessModal] = useState<{
+    items: TurnEntry[];
+    durationMs: number | null;
+  } | null>(null);
+  const [compactionModal, setCompactionModal] = useState<Row | null>(null);
+
   // 「粘底」:贴着底部时任何高度变化都跟着走;用户上滚就不打扰,滚回底部重新粘上
   const stick = useRef(true);
   const restoreFromTop = useRef<{
@@ -113,7 +195,7 @@ export function MessageStream() {
     const node =
       Array.from(innerRef.current?.children || []).find(
         (child) =>
-          child.matches(".msg, .day-chip, .compaction") &&
+          child.matches(".msg, .day-chip, .chip") &&
           child.getBoundingClientRect().bottom > element.getBoundingClientRect().top,
       ) || null;
     const anchor = {
@@ -127,7 +209,6 @@ export function MessageStream() {
     stick.current = false;
     restoreFromTop.current = anchor;
     void loadOlder().finally(() => {
-      // 失败或空页没有插入历史，不留下会影响下一次滚动的恢复记录。
       if (
         restoreFromTop.current === anchor &&
         useThread.getState().messages.find((message) => message.id > 0)?.id === anchor.firstId
@@ -150,7 +231,6 @@ export function MessageStream() {
     if (messages.find((message) => message.id > 0)?.id === anchor.firstId) {
       return;
     }
-    // 仅在更早消息实际插入后恢复，流式增量和加载提示不会提前消耗锚点。
     if (anchor.node?.isConnected && element.contains(anchor.node)) {
       element.scrollTop += anchor.node.getBoundingClientRect().top - anchor.offset;
     } else {
@@ -166,7 +246,6 @@ export function MessageStream() {
     let entries: TurnEntry[] = [];
     let turnStartAt: number | undefined;
     let turnLastAt: number | undefined;
-    let turnKey = "__head__";
 
     const noteAt = (at?: number) => {
       if (at) {
@@ -174,11 +253,7 @@ export function MessageStream() {
       }
     };
 
-    /**
-     * 收掉当前这轮。live = 最后一轮且还在跑。
-     * 有最终文本且已完成 → 过程进折叠条、最终文本在外;否则平铺。
-     * 最终文本 = 轮里最后一条带正文的已完成 assistant 行。
-     */
+    // 主对话只呈现对用户的消息回复；思考、工具调用与用量收进该回复的「更多」详情中。
     const flushTurn = (live: boolean) => {
       if (!entries.length) {
         turnStartAt = undefined;
@@ -196,11 +271,15 @@ export function MessageStream() {
         }
       }
       if (live || finalIndex < 0) {
-        output.push({
-          kind: "flat",
-          key: `flat:${turnKey}`,
-          items: list,
-        });
+        for (const item of list) {
+          if (item.kind === "text" && item.row.content) {
+            output.push({
+              kind: "message",
+              key: item.row.key,
+              row: item.row,
+            });
+          }
+        }
       } else {
         const final = list[finalIndex];
         const process = list.filter(
@@ -209,22 +288,16 @@ export function MessageStream() {
         const usage = list
           .filter((entry) => entry.kind === "usage" && entry.row.usageRecord)
           .map((entry) => entry.row.usageRecord!);
-        if (process.length) {
-          const durationMs =
-            turnStartAt && turnLastAt && turnLastAt > turnStartAt ? turnLastAt - turnStartAt : null;
-          output.push({
-            kind: "turn",
-            key: `turn:${turnKey}`,
-            items: process,
-            durationMs,
-          });
-        }
+        const durationMs =
+          turnStartAt && turnLastAt && turnLastAt > turnStartAt ? turnLastAt - turnStartAt : null;
         output.push({
           kind: "message",
           key: final.row.key,
           row: final.row,
           final: true,
           usage,
+          process,
+          durationMs,
         });
       }
       turnStartAt = undefined;
@@ -234,7 +307,7 @@ export function MessageStream() {
     for (const row of rows) {
       const day = dayLabel(row.at);
       if (day && day !== lastDay) {
-        flushTurn(false); // 换天先收上一轮,日期条不站在折叠条中间
+        flushTurn(false);
         output.push({
           kind: "day",
           key: `day:${row.key}`,
@@ -245,7 +318,6 @@ export function MessageStream() {
 
       if (row.kind === "user") {
         flushTurn(false);
-        turnKey = row.key;
         turnStartAt = row.at;
         output.push({
           kind: "message",
@@ -267,7 +339,6 @@ export function MessageStream() {
         continue;
       }
       if (row.kind === "assistant") {
-        // 同一行可能既有思考又有正文 —— 思考属于过程,正文属于文本
         if (row.reasoning) {
           entries.push({
             kind: "think",
@@ -283,7 +354,6 @@ export function MessageStream() {
         noteAt(row.at);
         continue;
       }
-      // 系统注解独立成块,不搅进轮里
       flushTurn(false);
       output.push({
         kind: "message",
@@ -295,7 +365,6 @@ export function MessageStream() {
     return output;
   }, [rows, busy]);
 
-  // 最后那条最终文本:复制行常显(其余悬停出现)
   const lastFinalKey = useMemo(() => {
     for (let i = blocks.length - 1; i >= 0; i--) {
       const block = blocks[i];
@@ -311,11 +380,8 @@ export function MessageStream() {
       return false;
     }
     const last = rows[rows.length - 1];
-    // 正文在流式输出,或过程行自己带着扫光 —— 都轮不到等待动画
+    // 只有当正文正在流式输出时才隐藏打字动画；工具执行或思考期间都展示打字气泡。
     if (last && last.kind === "assistant" && last.streaming && last.content) {
-      return false;
-    }
-    if (last && last.kind === "tool" && last.status === "running") {
       return false;
     }
     return true;
@@ -333,8 +399,6 @@ export function MessageStream() {
     }
   };
 
-  // 依赖 currentId:内层容器按对话 key 重挂,换对话后要观察的是新节点 ——
-  // 盯着旧节点的观察器一次都不会再触发,粘底从此失灵
   useEffect(() => {
     const element = scrollRef.current;
     const inner = innerRef.current;
@@ -354,7 +418,6 @@ export function MessageStream() {
     return () => observer.disconnect();
   }, [currentId]);
 
-  // 切对话 / 自己发消息:强制回底并重新粘上
   useEffect(() => {
     stick.current = true;
     setAtBottom(true);
@@ -365,7 +428,6 @@ export function MessageStream() {
     }
   }, [viewSeq]);
 
-  // 自动填屏:首页不满一屏就没有滚动条,onScroll 永不触发 —— 有更早的就继续拉
   useEffect(() => {
     if (!ready || !hasMore || loadingOlder || !rows.length) {
       return;
@@ -379,10 +441,11 @@ export function MessageStream() {
     }
   }, [ready, hasMore, loadingOlder, rows.length]);
 
+  const usageInfo = usageModal ? usageSummary(usageModal) : null;
+
   return (
     <div className="stream-region">
       <main ref={scrollRef} className="stream" onScroll={onScroll}>
-        {/* key 按对话换:换对话 = 整棵子树重挂,清除上一会话的组件状态 */}
         <div key={currentId || "__draft__"} ref={innerRef} className="stream-inner">
           {loadingOlder && <span className="chip">加载更早的消息…</span>}
           {!loadingOlder && hasMore && rows.length > 0 && (
@@ -415,7 +478,7 @@ export function MessageStream() {
             </div>
           )}
 
-          {blocks.map((block) => {
+          {blocks.map((block, index) => {
             if (block.kind === "day") {
               return (
                 <span key={block.key} className="day-chip">
@@ -423,30 +486,36 @@ export function MessageStream() {
                 </span>
               );
             }
-            if (block.kind === "flat") {
-              return <TurnEntries key={block.key} items={block.items} />;
-            }
-            if (block.kind === "turn") {
-              return (
-                <div key={block.key} className="msg agent">
-                  <TurnFold id={block.key} durationMs={block.durationMs}>
-                    <TurnEntries items={block.items} inFold />
-                  </TurnFold>
-                </div>
-              );
-            }
 
             const row = block.row;
+            const prev = blocks[index - 1];
+            const next = blocks[index + 1];
+            const samePrev = prev?.kind === "message" && prev.row.kind === row.kind;
+            const sameNext = next?.kind === "message" && next.row.kind === row.kind;
+
             if (row.kind === "user") {
+              const hasText = Boolean(row.content);
+              const onlyImages =
+                !hasText &&
+                Boolean(row.images && row.images.length > 0) &&
+                (!row.attachments || row.attachments.length === 0);
+              let groupClass = "";
+              if (samePrev && sameNext) {
+                groupClass = " is-mid";
+              } else if (samePrev) {
+                groupClass = " is-end";
+              } else if (sameNext) {
+                groupClass = " is-start";
+              }
               return (
-                <div key={block.key} className={`msg mine float-in`}>
-                  <div className="bubble">
+                <div key={block.key} className={`msg mine${groupClass} float-in`}>
+                  <div className={`bubble${onlyImages ? " is-media" : ""}`}>
                     {row.attachments && row.attachments.length > 0 && (
                       <div className="message-attachments">
-                        {row.attachments.map((file, index) =>
+                        {row.attachments.map((file, fileIndex) =>
                           file.url ? (
                             <a
-                              key={index}
+                              key={fileIndex}
                               className="attachment-card"
                               href={file.url}
                               download={file.name}
@@ -455,7 +524,7 @@ export function MessageStream() {
                               <AttachmentInfo file={file} />
                             </a>
                           ) : (
-                            <span key={index} className="attachment-card">
+                            <span key={fileIndex} className="attachment-card">
                               <AttachmentInfo file={file} />
                             </span>
                           ),
@@ -464,8 +533,8 @@ export function MessageStream() {
                     )}
                     {row.images && row.images.length > 0 && (
                       <div className="message-files">
-                        {row.images.map((src, index) => (
-                          <img key={index} src={src} alt="图片" />
+                        {row.images.map((src, imgIndex) => (
+                          <img key={imgIndex} src={src} alt="图片" />
                         ))}
                       </div>
                     )}
@@ -477,67 +546,57 @@ export function MessageStream() {
                       className="send-retry"
                       onClick={() => void retrySend(row, showCreatedSession)}
                     >
-                      发送失败,点击重试
+                      未送达 · 点击重试
                     </button>
                   )}
                 </div>
               );
             }
+
             if (row.kind === "assistant") {
               const always = block.key === lastFinalKey && !busy;
-              const messageId = row.messageId;
               return (
-                <div key={block.key} className={`msg agent float-in`}>
+                <div key={block.key} className="msg agent float-in">
                   <span className="msg-avatar">
                     <Mark size={28} />
                   </span>
                   <div className="md" dangerouslySetInnerHTML={{ __html: renderMd(row.content) }} />
-                  <Usage records={block.usage || []} />
-                  <div className={`act-row${always ? " always" : ""}`}>
-                    <Hint text="复制回答">
-                      <button
-                        className="act"
-                        aria-label="复制回答"
-                        onClick={() => void copyText(row.content)}
-                      >
-                        <Icon name="copy" size={16} />
-                      </button>
-                    </Hint>
-                    {messageId !== undefined && messageId > 0 && !row.streaming && (
-                      <Hint
-                        text={
-                          branchingMessageId === messageId ? "正在创建分支…" : "从此回答创建分支"
+                  {!row.streaming && (
+                    <AssistantActions
+                      row={row}
+                      always={always}
+                      usage={block.usage || []}
+                      process={block.process || []}
+                      durationMs={block.durationMs ?? null}
+                      busy={busy}
+                      branchingMessageId={branchingMessageId}
+                      onBranch={async (messageId) => {
+                        const id = await branchThread(messageId);
+                        if (id) {
+                          navigate(`/sessions/${id}`);
                         }
-                      >
-                        <button
-                          className="act"
-                          aria-label="分支"
-                          aria-busy={branchingMessageId === messageId}
-                          disabled={busy || branchingMessageId > 0}
-                          onClick={async () => {
-                            const id = await branchThread(messageId);
-                            if (id) {
-                              navigate(`/sessions/${id}`);
-                            }
-                          }}
-                        >
-                          <Icon name="branch" size={16} />
-                        </button>
-                      </Hint>
-                    )}
-                  </div>
+                      }}
+                      onOpenUsage={(records) => setUsageModal(records)}
+                      onOpenProcess={(items, durationMs) => setProcessModal({ items, durationMs })}
+                    />
+                  )}
                 </div>
               );
             }
+
             if (row.code === "compacted" && row.content) {
               return (
-                <details key={block.key} className="compaction">
-                  <summary>已压缩早期对话</summary>
-                  <div className="md" dangerouslySetInnerHTML={{ __html: renderMd(row.content) }} />
-                  {row.usageRecord && <Usage records={[row.usageRecord]} />}
-                </details>
+                <button
+                  key={block.key}
+                  type="button"
+                  className="chip chip-btn"
+                  onClick={() => setCompactionModal(row)}
+                >
+                  已压缩早期对话
+                </button>
               );
             }
+
             if (row.code === "error") {
               return (
                 <div key={block.key} className="stream-error" role="alert">
@@ -549,6 +608,7 @@ export function MessageStream() {
                 </div>
               );
             }
+
             return (
               <span key={block.key} className="chip">
                 {row.code === "stopped" ? "已停止" : row.content}
@@ -558,11 +618,15 @@ export function MessageStream() {
 
           {showWorking && (
             <div className="msg agent float-in">
+              <span className="msg-avatar">
+                <Mark size={28} />
+              </span>
               <Working />
             </div>
           )}
         </div>
       </main>
+
       {!atBottom && rows.length > 0 && (
         <Hint text="回到最新消息">
           <button
@@ -580,6 +644,84 @@ export function MessageStream() {
             <Icon name="down" size={17} />
           </button>
         </Hint>
+      )}
+
+      {usageModal && usageInfo && (
+        <Sheet
+          title="用量与费用"
+          className="usage-sheet"
+          onClose={() => setUsageModal(null)}
+          footer={
+            <button type="button" className="btn btn-quiet" onClick={() => setUsageModal(null)}>
+              关闭
+            </button>
+          }
+        >
+          <div className="usage-summary-pills">
+            {usageInfo.tokens.map((item) => (
+              <span key={item} className="detail-pill">
+                {item}
+              </span>
+            ))}
+            {usageModal.length > 1 && (
+              <span className="detail-pill">{usageModal.length} 次请求</span>
+            )}
+            {usageInfo.costs.map((cost) => (
+              <span key={cost} className="detail-pill is-accent">
+                {cost}
+              </span>
+            ))}
+          </div>
+          <pre className="usage-raw">{JSON.stringify(usageInfo.raw, null, 2)}</pre>
+        </Sheet>
+      )}
+
+      {processModal && (
+        <Sheet
+          title={
+            processModal.durationMs != null && processModal.durationMs > 0
+              ? `执行过程 · ${formatDuration(processModal.durationMs)}`
+              : "执行过程"
+          }
+          className="process-sheet"
+          onClose={() => setProcessModal(null)}
+          footer={
+            <button type="button" className="btn btn-quiet" onClick={() => setProcessModal(null)}>
+              关闭
+            </button>
+          }
+        >
+          <div className="process-sheet-list">
+            <TurnEntries items={processModal.items} inFold />
+          </div>
+        </Sheet>
+      )}
+
+      {compactionModal && (
+        <Sheet
+          title="上下文压缩摘要"
+          className="process-sheet"
+          onClose={() => setCompactionModal(null)}
+          footer={
+            <button
+              type="button"
+              className="btn btn-quiet"
+              onClick={() => setCompactionModal(null)}
+            >
+              关闭
+            </button>
+          }
+        >
+          <div
+            className="md"
+            dangerouslySetInnerHTML={{ __html: renderMd(compactionModal.content || "") }}
+          />
+          {compactionModal.usageRecord && (
+            <pre className="usage-raw">
+              {JSON.stringify(usageSummary([compactionModal.usageRecord]).raw, null, 2)}
+            </pre>
+          )}
+        </Sheet>
       )}
     </div>
   );

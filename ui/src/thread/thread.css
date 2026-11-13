@@ -72,6 +72,7 @@
   gap: 4px;
 }
 .topbar-actions .icon-btn {
+  position: relative;
   width: 38px;
   height: 38px;
   border-radius: 50%;
@@ -80,6 +81,40 @@
 .topbar-actions .icon-btn:hover {
   background: var(--accent-soft);
   color: var(--accent);
+}
+.more-dot {
+  position: absolute;
+  top: 7px;
+  right: 7px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--ok);
+  border: 2px solid var(--surface);
+  animation: breathe 2s ease-in-out infinite;
+}
+.thread-more-menu {
+  width: min(260px, calc(100vw - 24px));
+}
+.msg-more-menu {
+  width: min(220px, calc(100vw - 24px));
+}
+.menu-item-label {
+  flex: 1;
+  min-width: 0;
+}
+.menu-badge {
+  flex: none;
+  padding: 2px 8px;
+  border-radius: 99px;
+  background: var(--fill);
+  color: var(--text-3);
+  font-size: 11px;
+  font-weight: 500;
+}
+.menu-badge.is-live {
+  background: var(--ok-soft);
+  color: var(--ok);
 }
 .status-dot {
   width: 7px;
@@ -184,11 +219,14 @@
 .msg.mine {
   align-items: flex-end;
 }
+.msg.mine + .msg.mine {
+  margin-top: -3px;
+}
 .msg.mine + .msg.agent,
 .msg.agent + .msg.mine {
   margin-top: 14px;
 }
-/* AI 消息：左侧头像列 + 内容列；没有头像的块（过程、思考中）与气泡对齐 */
+/* AI 消息：左侧头像贴近气泡左下角，操作行在下方 */
 .msg.agent {
   display: grid;
   grid-template-columns: 30px minmax(0, 1fr);
@@ -202,11 +240,16 @@
 .msg.agent > .msg-avatar {
   grid-column: 1;
   grid-row: 1;
+  align-self: end;
+}
+.msg.agent > .act-row {
+  grid-row: 2;
 }
 .msg.agent > .md,
 .msg.agent > .working {
   justify-self: start;
   width: fit-content;
+  max-width: min(84%, 640px);
   padding: 10px 15px;
   border-radius: 20px 20px 20px 6px;
   background: var(--bubble-them);
@@ -226,7 +269,7 @@
   background: none;
 }
 .bubble {
-  max-width: 80%;
+  max-width: min(78%, 560px);
   padding: 9px 15px;
   border-radius: 20px 20px 6px 20px;
   background: var(--bubble-me);
@@ -237,6 +280,25 @@
   overflow-wrap: anywhere;
   user-select: text;
   cursor: text;
+}
+.msg.mine.is-start .bubble {
+  border-radius: 20px 20px 6px 20px;
+}
+.msg.mine.is-mid .bubble {
+  border-radius: 20px 6px 6px 20px;
+}
+.msg.mine.is-end .bubble {
+  border-radius: 20px 6px 20px 20px;
+}
+.bubble.is-media {
+  padding: 0;
+  background: transparent;
+}
+.bubble.is-media .message-files {
+  margin-bottom: 0;
+}
+.bubble.is-media .message-files img {
+  border-radius: 18px;
 }
 .bubble .attachment-card {
   border-color: transparent;
@@ -536,16 +598,19 @@
 .working {
   display: inline-flex;
   align-items: center;
-  gap: 9px;
+  justify-content: center;
   min-height: 38px;
-  padding: 0 15px;
+  padding: 0 16px;
   border-radius: 20px 20px 20px 6px;
   background: var(--bubble-them);
   color: var(--text-3);
 }
-.working-text {
-  color: var(--text-3);
-  font-size: 13px;
+.working .typing {
+  gap: 4px;
+}
+.working .typing i {
+  width: 7px;
+  height: 7px;
 }
 .thread.is-blank .stream-inner {
   justify-content: center;
@@ -648,9 +713,18 @@
 }
 .composer-files {
   display: flex;
+  align-items: center;
   gap: 10px;
   overflow-x: auto;
-  padding: 16px 18px 2px;
+  padding: 14px 16px 2px;
+}
+.composer-reading {
+  flex: none;
+  padding: 6px 12px;
+  border-radius: 99px;
+  background: var(--surface-float);
+  color: var(--text-3);
+  font-size: 12px;
 }
 .file-preview {
   position: relative;
@@ -803,39 +877,6 @@
 }
 .composer .stop:disabled {
   opacity: 0.5;
-}
-.composer-footer {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 4px 12px;
-  max-width: var(--content-width);
-  margin: 6px auto 0;
-  padding: 0 14px;
-}
-.foot-tag {
-  color: var(--accent);
-  font-size: 11px;
-  font-weight: 500;
-  line-height: 18px;
-}
-.foot-note {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex: 1 1 70px;
-  min-width: 0;
-  color: var(--text-4);
-  font-size: 11px;
-  line-height: 18px;
-}
-.composer-cost {
-  margin-left: auto;
-  color: var(--text-3);
-  font-size: 11px;
-  line-height: 18px;
-  font-variant-numeric: tabular-nums;
-  overflow-wrap: anywhere;
 }
 .message-files {
   display: flex;
@@ -1063,34 +1104,71 @@
   font-weight: 550;
   white-space: nowrap;
 }
-.compaction {
-  align-self: stretch;
-  margin: 4px 24px 20px;
-  color: var(--text-3);
+.info-sheet.sheet {
+  width: min(460px, calc(100vw - 24px));
+}
+.info-list {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.info-list > div {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.info-list dt {
+  color: var(--text-4);
   font-size: 12px;
 }
-.compaction summary {
-  display: inline-flex;
-  align-items: center;
-  padding: 5px 10px;
-  background: var(--surface-side);
-  border: 1px solid var(--edge-soft);
-  border-radius: 7px;
-  cursor: pointer;
-  list-style: none;
+.info-list dd {
+  margin: 0;
+  color: var(--text-1);
+  font-size: 14px;
+  overflow-wrap: anywhere;
 }
-.compaction summary::-webkit-details-marker {
-  display: none;
+.info-list dd.mono {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
 }
-.compaction[open] summary {
-  margin-bottom: 10px;
+.usage-sheet.sheet,
+.process-sheet.sheet {
+  width: min(620px, calc(100vw - 24px));
 }
-.compaction .md {
-  padding: 14px;
-  border: 1px solid var(--edge);
-  border-radius: 10px;
-  font-size: 13px;
+.usage-summary-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+.detail-pill {
+  padding: 4px 11px;
+  border-radius: 99px;
+  background: var(--fill);
   color: var(--text-2);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.detail-pill.is-accent {
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 600;
+}
+.usage-raw {
+  margin: 12px 0 0;
+  padding: 14px;
+  max-height: 360px;
+  overflow: auto;
+  border-radius: 12px;
+  background: var(--fill);
+  color: var(--text-2);
+  font: 12px/1.6 var(--font-mono);
+}
+.process-sheet-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 @media (hover: none) {
   .act-row {
@@ -1135,10 +1213,6 @@
   .starter {
     padding: 7px 12px;
     font-size: 12px;
-  }
-  .composer-cost,
-  .foot-note {
-    font-size: 10px;
   }
   .stream-error {
     margin-left: 10px;

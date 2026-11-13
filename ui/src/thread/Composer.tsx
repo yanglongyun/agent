@@ -2,11 +2,9 @@ import { useNavigate } from "react-router";
 import { useEffect, useRef, useState } from "react";
 
 import { Icon } from "../icons/Icon";
-import { TasksPanel } from "../tasks/Tasks";
 import { send, stopRun, useThread, selectedModel } from "./store";
 import { useDraftSeed } from "./draft";
 import { toast } from "../overlay/toast";
-import { costLabel } from "./metering";
 import { ChatInputFrame, FilePreview } from "../components/ruixen/ChatInput";
 import { Hint } from "../overlay/Hint";
 import { isImageAttachment, validateAttachments, type UploadAttachment } from "./attachments";
@@ -26,12 +24,8 @@ export function Composer() {
   const readingAttachments = useRef(false);
   const areaRef = useRef<HTMLTextAreaElement>(null);
   const state = useThread();
-  const { busy, stopping, currentId, status, threads, connected } = state;
+  const { busy, stopping, currentId, connected } = state;
   const model = selectedModel(state);
-  const current = threads.find((thread) => thread.id === currentId);
-  const cost = currentId
-    ? current
-    : { cost: { amount: 0, currency: "USD", unpriced_requests: 0 }, request_count: 0 };
   const seed = useDraftSeed();
 
   // 草稿按对话落 localStorage,重启不丢;空白草稿记在 blank 键下
@@ -163,13 +157,12 @@ export function Composer() {
 
   return (
     <div className="composer-wrap">
-      {currentId && <TasksPanel key={currentId} sessionId={currentId} busy={busy} />}
       <ChatInputFrame
         onFocus={() => areaRef.current?.focus()}
         onFiles={(files) => void addAttachments(files)}
         disabled={busy || reading}
       >
-        {attachments.length > 0 && (
+        {(attachments.length > 0 || reading) && (
           <div className="composer-files">
             {attachments.map((file, index) => (
               <FilePreview
@@ -180,6 +173,7 @@ export function Composer() {
                 }
               />
             ))}
+            {reading && <span className="composer-reading">正在读取附件…</span>}
           </div>
         )}
         <div className="composer-row">
@@ -262,27 +256,6 @@ export function Composer() {
           )}
         </div>
       </ChatInputFrame>
-      <div className="composer-footer">
-        {attachments.length > 0 && <span className="foot-tag">{attachments.length}/5 个附件</span>}
-        {reading && <span className="foot-tag">读取附件…</span>}
-        <span className="foot-note clip" title={status?.workdir}>
-          {status?.workdir && (
-            <>
-              <Icon name="folder" size={12} />
-              <span className="clip">
-                {status.workdir.split(/[\\/]/).filter(Boolean).at(-1) || status.workdir}
-              </span>
-            </>
-          )}
-        </span>
-        <span
-          className="composer-cost"
-          aria-live="polite"
-          title="包含本对话、所有子任务和上下文压缩的已记录费用"
-        >
-          累计 {cost ? costLabel(cost) : "加载中…"}
-        </span>
-      </div>
     </div>
   );
 }

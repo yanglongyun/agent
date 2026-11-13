@@ -14,44 +14,37 @@
 .side-head {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 6px;
   height: 44px;
   padding: 0 4px;
-  margin-bottom: 10px;
+  margin-bottom: 8px;
 }
 .side-brand {
-  font-size: 26px;
+  font-size: 25px;
   font-weight: 750;
   letter-spacing: -0.03em;
 }
-.side-new {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-shrink: 0;
-  min-height: 42px;
-  padding: 0 14px;
-  border-radius: 99px;
-  background: var(--accent-soft);
-  color: var(--accent);
-  text-decoration: none;
-  font-size: 14px;
-  font-weight: 600;
-  transition: filter 0.16s;
+.side-compose {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--fill);
+  color: var(--text-1);
 }
-.side-new span {
-  flex: 1;
+.side-compose:hover {
+  background: var(--fill-2);
 }
-.side-new:hover {
-  filter: brightness(0.96);
+.side-toggle {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
 }
 .side-search {
   display: flex;
   align-items: center;
   gap: 9px;
   padding: 0 14px;
-  height: 40px;
-  margin-top: 10px;
+  height: 38px;
   flex-shrink: 0;
   border-radius: 99px;
   background: var(--fill);
@@ -103,7 +96,7 @@
   position: relative;
   display: flex;
   align-items: center;
-  height: 64px;
+  height: 58px;
   margin: 1px 0;
   border-radius: 12px;
   transition: background 0.16s;
@@ -125,7 +118,7 @@
   padding: 0 36px 0 10px;
   text-decoration: none;
   color: var(--text-1);
-  font-size: 15px;
+  font-size: 14.5px;
   font-weight: 500;
 }
 .conv.on .conv-title {
@@ -136,11 +129,11 @@
   display: grid;
   place-items: center;
   flex-shrink: 0;
-  width: 46px;
-  height: 46px;
+  width: 42px;
+  height: 42px;
   border-radius: 50%;
   color: #ffffff;
-  font-size: 18px;
+  font-size: 17px;
   font-weight: 650;
   background: linear-gradient(135deg, #1a9fff, #0a7cff);
 }
@@ -200,8 +193,8 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  border-top: 1px solid var(--edge);
-  padding-top: 12px;
+  border-top: 1px solid var(--edge-soft);
+  padding-top: 10px;
 }
 .side-settings {
   display: flex;
@@ -210,34 +203,16 @@
   flex: 1;
   height: 38px;
   padding: 0 10px;
-  border-radius: 9px;
+  border-radius: 10px;
   text-decoration: none;
-  font-size: 13px;
+  font-size: 14px;
+  font-weight: 500;
   color: var(--text-2);
 }
 .side-settings:hover,
 .side-settings.on {
   background: var(--row-hover);
   color: var(--text-1);
-}
-.side-workspace {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 12px 10px 0;
-  color: var(--text-4);
-  font-size: 10.5px;
-}
-.side-workspace > span:first-child {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-}
-.workspace-dot {
-  width: 5px;
-  height: 5px;
-  background: var(--ok);
-  border-radius: 50%;
 }
 .dialog-field {
   display: flex;

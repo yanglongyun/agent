@@ -279,17 +279,16 @@ export function TurnEntries({ items, inFold }: { items: TurnEntry[]; inFold?: bo
   );
 }
 
-/* ── 正在工作:转圈 + 扫光文字 ── */
+/* ── 正在回复:Messenger 三点打字气泡 ── */
 
-export function Working({ text = "正在工作…" }: { text?: string }) {
+export function Working() {
   return (
-    <div className="working">
+    <div className="working" role="status" aria-label="正在回复">
       <span className="typing" aria-hidden="true">
         <i />
         <i />
         <i />
       </span>
-      <span className="working-text sheen">{text}</span>
     </div>
   );
 }
