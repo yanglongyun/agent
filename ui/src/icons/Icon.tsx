@@ -38,6 +38,8 @@ import {
   Link,
   ExternalLink,
   Download,
+  Pin,
+  PinOff,
 } from "lucide-react";
 
 // 全部界面使用 Lucide 同一套描边图标，按需打包。
@@ -81,6 +83,8 @@ const glyphs = {
   link: Link,
   external: ExternalLink,
   download: Download,
+  pin: Pin,
+  pinOff: PinOff,
 };
 export type IconName = keyof typeof glyphs;
 export function Icon({

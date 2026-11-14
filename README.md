@@ -124,6 +124,7 @@ CREATE TABLE sessions (
   total_cost_nanos INTEGER NOT NULL DEFAULT 0,
   unpriced_requests INTEGER NOT NULL DEFAULT 0,
   request_count INTEGER NOT NULL DEFAULT 0,
+  pinned INTEGER,
   created_at INTEGER,
   updated_at INTEGER
 );
@@ -196,6 +197,8 @@ CREATE INDEX idx_compactions_session ON compactions(session_id, id);
 
 ## 用量与预估费用
 
+会话支持置顶。`sessions.pinned` 为 NULL 表示未置顶，非空是置顶组内的序号（升序，新置顶的排最前）；列表按「置顶在前，其余按最近活动」排序，置顶不改变活动时间，分支不继承置顶。侧栏的置顶组可以拖拽：鼠标拖动、触屏长按约 0.4 秒后拖动，在组内排序、从其余会话拖入置顶、拖回其余区域取消置顶；靠近列表边缘自动滚动，搜索时不可拖拽。会话菜单里也有「置顶 / 取消置顶」。拖拽通过 `PUT /api/sessions/pinned` 一次提交完整顺序，前端先乐观更新，失败回滚；变化经全局 SSE 同步到其他页面。
+
 AI 回答后的操作栏提供复制与「更多」菜单（含「从此处创建分支」、本轮「用量与费用」和「执行过程」）。分支复制截至该回答的对话、工具记录、图片及当时已有的摘要，创建后打开新对话，标题为「原标题（2）」，同名时递增编号。图片独立保存，删除原对话不会影响分支；历史环境快照保持原样。继承内容不重复计费，分支累计费用从零开始，不复制原对话中的运行任务或命令。接口为 `POST /api/sessions/:id/branches`，请求体 `{ "message_id": 回答消息ID }`。
 
 模型响应的 `usage` 按厂商原样保存，Claude 不补 total_tokens 或改写 input_tokens；Chat 保留 prompt_tokens、completion_tokens 及其原生明细，不改名。`server/metering/index.js` 负责压缩用量和费用计算，`server/metering/rules.js` 维护模型标价；支持 gpt-6-luna、gpt-6.1-terra、gpt-6.1-sol（Responses 和 Chat 共用同一份模型价格）、claude-fable-5-2、claude-sonnet-5-5、claude-opus-5-5。
@@ -222,7 +225,8 @@ sessions 和 tasks 的 total_cost_nanos 以十亿分之一美元累计已记录�
 | GET / HEAD           | `/api/attachments/:id`                           | 下载已保存的普通附件                                                                |
 | GET / HEAD           | `/api/images/:name`                              | 查看已保存的图片                                                                    |
 | GET / POST           | `/api/sessions`                                  | 列表 / 新建 `{ title? }`                                                            |
-| GET / PATCH / DELETE | `/api/sessions/:id`                              | 查看 / 改名 `{ title }` / 删除                                                      |
+| PUT                  | `/api/sessions/pinned`                           | `{ ids }` 一次设定整个置顶组：顺序即显示顺序，不在列表里的取消置顶                  |
+| GET / PATCH / DELETE | `/api/sessions/:id`                              | 查看 / 改名或置顶 `{ title?, pinned? }` / 删除                                      |
 | GET                  | `/api/sessions/:id/messages?before=123&limit=60` | 历史消息                                                                            |
 | POST                 | `/api/sessions/:id/messages`                     | `{ text, model_id, compact_model_id, images?, attachments? }` 发消息，返回 202 JSON |
 | GET                  | `/api/events`                                    | 全局 SSE，复用所有会话的事件                                                        |

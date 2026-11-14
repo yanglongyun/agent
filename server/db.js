@@ -9,6 +9,7 @@ CREATE TABLE IF NOT EXISTS sessions (
   total_cost_nanos INTEGER NOT NULL DEFAULT 0,
   unpriced_requests INTEGER NOT NULL DEFAULT 0,
   request_count INTEGER NOT NULL DEFAULT 0,
+  pinned INTEGER,
   created_at INTEGER,
   updated_at INTEGER
 );

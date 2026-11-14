@@ -20,6 +20,7 @@ export interface Thread extends OwnerCost {
   title: string;
   preview: string;
   running: boolean;
+  pinned: number | null;
   created_at: number;
   updated_at: number;
 }
@@ -118,12 +119,30 @@ function mergeThread(previous: Thread | undefined, incoming: Thread): Thread {
   return { ...previous, ...incoming };
 }
 
+export function isPinned(thread: Thread) {
+  return typeof thread.pinned === "number";
+}
+
+// 列表顺序：置顶在前（按置顶序号升序），其余按最近活动，与服务端排序一致。
+export function compareThreads(a: Thread, b: Thread) {
+  if (isPinned(a) && isPinned(b)) {
+    return (a.pinned as number) - (b.pinned as number) || b.updated_at - a.updated_at;
+  }
+  if (isPinned(a)) {
+    return -1;
+  }
+  if (isPinned(b)) {
+    return 1;
+  }
+  return b.updated_at - a.updated_at;
+}
+
 function upsertThread(threads: Thread[], session: Thread) {
   const previous = threads.find((thread) => thread.id === session.id);
   return [
     mergeThread(previous, session),
     ...threads.filter((thread) => thread.id !== session.id),
-  ].sort((a, b) => b.updated_at - a.updated_at);
+  ].sort(compareThreads);
 }
 
 export function updateSessionCost(session: OwnerCost & { id: string }) {
@@ -851,6 +870,38 @@ export async function stopRun() {
   }
   await cancel;
 }
+// 单个会话置顶或取消置顶；新置顶的会话排在置顶组最前。
+export async function pinThread(id: string, pinned: boolean) {
+  try {
+    const session = await api.patch<Thread>(url(id), { pinned });
+    set((state) => ({ threads: upsertThread(state.threads, session) }));
+  } catch (error) {
+    toast(error instanceof Error ? error.message : "置顶失败");
+  }
+}
+
+function withPins(threads: Thread[], pins: Map<string, number | null>) {
+  return threads
+    .map((thread) => ({ ...thread, pinned: pins.get(thread.id) ?? null }))
+    .sort(compareThreads);
+}
+
+// 一次设定整个置顶组（拖拽排序、拖入、拖出）：先按新顺序乐观更新，失败回滚。
+export async function setPinnedThreads(ids: string[]) {
+  const previous = new Map(get().threads.map((thread) => [thread.id, thread.pinned]));
+  set((state) => ({
+    threads: withPins(state.threads, new Map(ids.map((id, index) => [id, index]))),
+  }));
+  try {
+    const result = await api.put<{ sessions: Thread[] }>("/api/sessions/pinned", { ids });
+    const confirmed = new Map(result.sessions.map((session) => [session.id, session.pinned]));
+    set((state) => ({ threads: withPins(state.threads, confirmed) }));
+  } catch (error) {
+    set((state) => ({ threads: withPins(state.threads, previous) }));
+    toast(error instanceof Error ? error.message : "排序失败");
+  }
+}
+
 export async function renameThread(id: string, title: string) {
   try {
     await api.patch<Thread>(url(id), { title });

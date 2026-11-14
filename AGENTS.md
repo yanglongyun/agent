@@ -46,6 +46,7 @@
 
 - 顶栏选择本次请求的 model_id，请求中的 compact_model_id 固定使用该对话模型（服务端仍接收并保存二者至用户消息 meta）。默认值优先级：本对话手动选择 > 本对话最近一条用户消息的 meta.model_id > 浏览器本地记住的最近使用模型（localStorage `agentic.model`，选择和发送时更新，新对话与刷新后沿用）> 列表第一项；已选模型被删除时顺延到下一级，不从历史费用推断模型。
 - 前端页面由 URL 路由决定：新对话 `/`、会话 `/sessions/:id`、设置 `/settings`、登录 `/login`。不再用 page 状态或本地保存的会话 ID 决定页面。
+- 置顶保存在 `sessions.pinned`（NULL 未置顶，非空为置顶组内升序序号）。列表在服务端按「置顶在前、其余按 updated_at」排序，前端 `compareThreads` 保持同一规则；置顶不修改 updated_at，分支不继承。单个会话用 PATCH `{ pinned }`，拖拽排序、拖入、拖出统一用 PUT `/api/sessions/pinned` 提交完整 ids，由事务整体生效，只向全局 SSE 推送状态变化的会话。拖拽手势集中在 `ui/src/shell/useThreadDrag.ts`：鼠标阈值触发，触屏长按触发，拖拽期间拦截 touchmove 的滚动，搜索时禁用。线上已有数据库的新增列由人工执行 `ALTER TABLE`，代码里不写迁移。
 - 回复结束后不重新查询消息或会话列表，压缩完成后不重新查询摘要。API 通过现有 SSE 事件附带保存确认和会话信息，前端直接更新；确认只在事务提交后发送，不修改标准 item。
 - 生成任务归会话，server/replies.js 只管理执行、未提交事件和终止结果；server/events.js 管理全局有序广播。每个页面只通过 GET /api/events 建立一条 SSE；POST /api/sessions/:id/messages 保存输入后立即返回 202 JSON，停止走普通 HTTP。SSE 信封提供 epoch、cursor、session_id、run_id、event，不增加 Agent 事件类型；新增、改名、分支和删除也通过全局流同步。切换页面只读取历史快照，不建立连接。历史接口原子返回消息、摘要、未提交片段、终止结果和游标，前端缓存查询期间到达的事件，只应用快照游标之后的内容。断线重连自动读取全局列表快照并恢复当前视图，不重发模型请求，不轮询对话列表。切换、刷新、关闭或慢读连接均不取消执行；停止、运行超时和服务关闭才取消。
 - AI 回答的分支通过 POST /api/sessions/:id/branches 指定 message_id，复制截至该回答的完整历史及当时已有摘要；摘要边界映射到新消息 ID。分支复制图片文件、保留原环境快照，继承记录标记 inherited，不复制 usage、计量、累计金额或运行中的任务。继承记录不作为本分支上次模型响应的用量或过期时间。创建成功后进入新会话，标题追加（2）并避开同名编号。

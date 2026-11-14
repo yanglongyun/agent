@@ -14,12 +14,17 @@ import {
   stopRun,
   updateSessionCost,
   branchThread,
+  compareThreads,
+  isPinned,
+  pinThread,
+  setPinnedThreads,
   receiveFrame,
   startEvents,
   dispose,
 } from "../src/thread/store";
 import type { StreamEvent, GlobalFrame } from "../src/thread/stream";
 import { validateAttachments, isImageAttachment } from "../src/thread/attachments";
+import { nextPinnedIds, samePinnedIds } from "../src/shell/pinned";
 import { copyText } from "../src/lib/clipboard";
 import { usageSummary, costLabel } from "../src/thread/metering";
 
@@ -32,6 +37,7 @@ const testSession = {
   title: "",
   preview: "",
   running: false,
+  pinned: null,
   created_at: 1,
   updated_at: 1,
   ...sessionCost,
@@ -1355,4 +1361,139 @@ test("模型选择记住最近使用的模型，旧对话以自己最近发送�
   assert.equal(selectedModel()?.id, "b");
   useThread.setState({ status: { ...initial, models: [models[0]] } });
   assert.equal(selectedModel()?.id, "a");
+});
+
+test("置顶顺序运算：拖入、组内排序、拖出，插入下标不含被拖会话", () => {
+  const pinned = ["a", "b", "c"];
+  assert.deepEqual(nextPinnedIds(pinned, "d", { kind: "pinned", index: 1 }), ["a", "d", "b", "c"]);
+  assert.deepEqual(nextPinnedIds(pinned, "a", { kind: "pinned", index: 2 }), ["b", "c", "a"]);
+  assert.deepEqual(nextPinnedIds(pinned, "c", { kind: "pinned", index: 0 }), ["c", "a", "b"]);
+  assert.deepEqual(nextPinnedIds(pinned, "b", { kind: "recent" }), ["a", "c"]);
+  assert.deepEqual(nextPinnedIds([], "x", { kind: "pinned", index: 0 }), ["x"]);
+  assert.deepEqual(nextPinnedIds(["a"], "x", { kind: "pinned", index: 99 }), ["a", "x"]);
+  assert.deepEqual(nextPinnedIds(["a"], "x", { kind: "pinned", index: -3 }), ["x", "a"]);
+  // 拖回原位、把未置顶的拖到其余区域，结果不变，调用方据此跳过请求。
+  assert.equal(
+    samePinnedIds(nextPinnedIds(pinned, "b", { kind: "pinned", index: 1 }), pinned),
+    true,
+  );
+  assert.equal(samePinnedIds(nextPinnedIds(pinned, "z", { kind: "recent" }), pinned), true);
+  assert.equal(samePinnedIds(["a", "b"], ["b", "a"]), false);
+});
+
+test("列表排序置顶在前且按序号升序，其余按最近活动，序号 0 也算置顶", () => {
+  const thread = (id: string, pinned: number | null, updated_at: number) => ({
+    ...testSession,
+    id,
+    pinned,
+    updated_at,
+  });
+  const sorted = [
+    thread("x", null, 5),
+    thread("p2", 1, 1),
+    thread("y", null, 9),
+    thread("p1", 0, 2),
+  ];
+  sorted.sort(compareThreads);
+  assert.deepEqual(
+    sorted.map((item) => item.id),
+    ["p1", "p2", "y", "x"],
+  );
+  assert.equal(isPinned(thread("z", 0, 1)), true);
+  assert.equal(isPinned(thread("z", null, 1)), false);
+});
+
+test("单个置顶使用服务端返回的序号并排到最前；失败只提示不改列表", async (t) => {
+  const original = globalThis.fetch;
+  t.after(() => {
+    globalThis.fetch = original;
+  });
+  const a = { ...testSession, id: "a", updated_at: 2 };
+  const b = { ...testSession, id: "b", updated_at: 1 };
+  useThread.setState({ threads: [a, b] });
+  globalThis.fetch = async (url, options) => {
+    assert.equal(url, "/api/sessions/b");
+    assert.equal(options?.method, "PATCH");
+    assert.deepEqual(JSON.parse(String(options?.body)), { pinned: true });
+    return json({ ...b, pinned: -1 });
+  };
+  await pinThread("b", true);
+  assert.deepEqual(
+    useThread.getState().threads.map((item) => [item.id, item.pinned]),
+    [
+      ["b", -1],
+      ["a", null],
+    ],
+  );
+  globalThis.fetch = async () => json({ error: "会话不存在" }, 404);
+  await pinThread("a", true);
+  assert.deepEqual(
+    useThread.getState().threads.map((item) => [item.id, item.pinned]),
+    [
+      ["b", -1],
+      ["a", null],
+    ],
+  );
+});
+
+test("拖拽排序先乐观更新，以服务端确认为准；失败时回滚到拖拽之前", async (t) => {
+  const original = globalThis.fetch;
+  t.after(() => {
+    globalThis.fetch = original;
+  });
+  const thread = (id: string, pinned: number | null, updated_at: number) => ({
+    ...testSession,
+    id,
+    pinned,
+    updated_at,
+  });
+  const initial = [
+    thread("a", 0, 1),
+    thread("b", 1, 2),
+    thread("c", null, 9),
+    thread("d", null, 5),
+  ];
+  const order = () => useThread.getState().threads.map((item) => [item.id, item.pinned]);
+  useThread.setState({ threads: initial });
+
+  let finish: (value: Response) => void;
+  globalThis.fetch = async (url, options) => {
+    assert.equal(url, "/api/sessions/pinned");
+    assert.equal(options?.method, "PUT");
+    assert.deepEqual(JSON.parse(String(options?.body)), { ids: ["c", "a"] });
+    return new Promise<Response>((resolve) => {
+      finish = resolve;
+    });
+  };
+  // 把 c 拖入最前，b 被挤出置顶。
+  const pending = setPinnedThreads(["c", "a"]);
+  assert.deepEqual(order(), [
+    ["c", 0],
+    ["a", 1],
+    ["d", null],
+    ["b", null],
+  ]);
+  finish!(
+    json({
+      sessions: [thread("c", 0, 9), thread("a", 1, 1), thread("d", null, 5), thread("b", null, 2)],
+    }),
+  );
+  await pending;
+  assert.deepEqual(order(), [
+    ["c", 0],
+    ["a", 1],
+    ["d", null],
+    ["b", null],
+  ]);
+
+  // 失败：回到拖拽之前的状态。
+  useThread.setState({ threads: initial });
+  globalThis.fetch = async () => json({ error: "服务暂时不可用" }, 500);
+  await setPinnedThreads(["c"]);
+  assert.deepEqual(order(), [
+    ["a", 0],
+    ["b", 1],
+    ["c", null],
+    ["d", null],
+  ]);
 });

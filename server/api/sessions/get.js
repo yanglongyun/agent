@@ -14,7 +14,7 @@ export function readSessions(context) {
       ) AS first,
       (SELECT meta FROM messages WHERE session_id = sessions.id ORDER BY id LIMIT 1) AS first_meta
     FROM sessions
-    ORDER BY updated_at DESC
+    ORDER BY (sessions.pinned IS NULL) ASC, sessions.pinned ASC, sessions.updated_at DESC
   `,
     )
     .all();

@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
-import * as Dropdown from "@radix-ui/react-dropdown-menu";
 import { Link, NavLink, useLocation, useNavigate } from "react-router";
 import { Icon, type IconName } from "../icons/Icon";
 import { Hint } from "../overlay/Hint";
@@ -8,13 +7,18 @@ import { Sheet } from "../overlay/Sheet";
 import { cycleTheme, useTheme } from "../lib/theme";
 import {
   createDraft,
+  isPinned,
+  pinThread,
   removeThread,
   renameThread,
+  setPinnedThreads,
   threadTitle,
   useThread,
   type Thread,
 } from "../thread/store";
+import { ConversationRow } from "./ConversationRow";
 import { useShell } from "./layout";
+import { useThreadDrag } from "./useThreadDrag";
 
 function conversationGroup(updatedAt: number) {
   const today = new Date();
@@ -38,10 +42,22 @@ export function Sidebar() {
   const [renameText, setRenameText] = useState("");
   const [removing, setRemoving] = useState<Thread | null>(null);
   const actionTrigger = useRef<HTMLButtonElement | null>(null);
+  const query = search.trim().toLocaleLowerCase();
+  // 置顶组与其余会话分开：置顶按服务端序号，其余按最近活动分「今天/昨天/更早」。
+  const pinnedThreads = useMemo(
+    () =>
+      threads.filter(
+        (thread) =>
+          isPinned(thread) && (!query || threadTitle(thread).toLocaleLowerCase().includes(query)),
+      ),
+    [threads, query],
+  );
   const groups = useMemo(() => {
     const result: Array<{ label: string; threads: Thread[] }> = [];
-    const query = search.trim().toLocaleLowerCase();
     for (const thread of threads) {
+      if (isPinned(thread)) {
+        continue;
+      }
       if (query && !threadTitle(thread).toLocaleLowerCase().includes(query)) {
         continue;
       }
@@ -54,7 +70,17 @@ export function Sidebar() {
       group.threads.push(thread);
     }
     return result;
-  }, [threads, search]);
+  }, [threads, query]);
+  const allPinnedIds = useMemo(
+    () => threads.filter(isPinned).map((thread) => thread.id),
+    [threads],
+  );
+  // 搜索过滤后的列表不是完整顺序，搜索时不允许拖拽。
+  const drag = useThreadDrag({
+    enabled: query === "",
+    pinnedIds: allPinnedIds,
+    onChange: (ids) => void setPinnedThreads(ids),
+  });
   useEffect(() => {
     if (renaming) {
       setRenameText(threadTitle(renaming));
@@ -77,6 +103,25 @@ export function Sidebar() {
       void renameThread(thread.id, renameText.trim());
     }
   };
+  const renderRow = (thread: Thread) => (
+    <ConversationRow
+      key={thread.id}
+      thread={thread}
+      active={location.pathname === `/sessions/${thread.id}`}
+      live={thread.running || (thread.id === currentId && busy)}
+      pinned={isPinned(thread)}
+      dragging={drag.draggingId === thread.id}
+      gestures={drag.bind({ id: thread.id, title: threadTitle(thread) })}
+      consumeClick={drag.consumeClick}
+      onNavigate={shell.closeDrawer}
+      onRename={setRenaming}
+      onRemove={setRemoving}
+      onTogglePin={(target) => void pinThread(target.id, !isPinned(target))}
+      onMenuTrigger={(element) => {
+        actionTrigger.current = element;
+      }}
+    />
+  );
   const themeNames = { auto: "跟随系统", light: "浅色", dark: "深色" };
   const themeIcons: Record<typeof theme, IconName> = {
     auto: "monitor",
@@ -138,73 +183,28 @@ export function Sidebar() {
         )}
       </div>
       <nav className="side-scroll" aria-label="对话列表">
-        {groups.map((group) => (
-          <div className="conversation-group" key={group.label}>
+        {(pinnedThreads.length > 0 || drag.draggingId !== "") && (
+          <div className="conversation-group" data-group="pinned">
             <div className="side-label">
-              {group.label}
-              <span>{group.threads.length}</span>
+              置顶
+              <span>{pinnedThreads.length}</span>
             </div>
-            {group.threads.map((thread) => {
-              const live = thread.running || (thread.id === currentId && busy);
-              return (
-                <div
-                  key={thread.id}
-                  className={`conv${location.pathname === `/sessions/${thread.id}` ? " on" : ""}`}
-                >
-                  <Link
-                    className="conv-title"
-                    to={`/sessions/${thread.id}`}
-                    onClick={shell.closeDrawer}
-                    title={threadTitle(thread)}
-                  >
-                    {live && <span className="conv-live" aria-label="正在运行" />}
-                    <span className="clip">{threadTitle(thread)}</span>
-                  </Link>
-                  <Dropdown.Root>
-                    <Dropdown.Trigger
-                      className="conv-menu icon-btn"
-                      onFocus={(event) => {
-                        actionTrigger.current = event.currentTarget;
-                      }}
-                      onPointerDown={(event) => {
-                        actionTrigger.current = event.currentTarget;
-                      }}
-                      aria-label={`对话操作：${threadTitle(thread)}`}
-                    >
-                      <Icon name="more" size={17} />
-                    </Dropdown.Trigger>
-                    <Dropdown.Portal>
-                      <Dropdown.Content
-                        className="dropdown-content"
-                        align="start"
-                        side="right"
-                        sideOffset={8}
-                        collisionPadding={12}
-                      >
-                        <Dropdown.Item
-                          className="dropdown-item"
-                          onSelect={() => setRenaming(thread)}
-                        >
-                          <Icon name="pen" size={15} />
-                          重命名
-                        </Dropdown.Item>
-                        <Dropdown.Separator className="dropdown-separator" />
-                        <Dropdown.Item
-                          className="dropdown-item danger"
-                          onSelect={() => setRemoving(thread)}
-                        >
-                          <Icon name="trash" size={15} />
-                          删除对话
-                        </Dropdown.Item>
-                      </Dropdown.Content>
-                    </Dropdown.Portal>
-                  </Dropdown.Root>
-                </div>
-              );
-            })}
+            {pinnedThreads.map(renderRow)}
+            {pinnedThreads.length === 0 && <div className="pin-empty">拖到这里置顶</div>}
           </div>
-        ))}
-        {!groups.length && (
+        )}
+        <div data-group="recent">
+          {groups.map((group) => (
+            <div className="conversation-group" key={group.label}>
+              <div className="side-label">
+                {group.label}
+                <span>{group.threads.length}</span>
+              </div>
+              {group.threads.map(renderRow)}
+            </div>
+          ))}
+        </div>
+        {!groups.length && !pinnedThreads.length && (
           <div className="side-empty">
             <Icon name={search ? "search" : "messages"} size={22} />
             <span>{search ? "没有匹配的对话" : "还没有对话"}</span>

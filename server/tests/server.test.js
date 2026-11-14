@@ -286,6 +286,7 @@ test("业务表与计量表字段、路由、鉴权、分页和删除", async (t
     "total_cost_nanos",
     "unpriced_requests",
     "request_count",
+    "pinned",
     "created_at",
     "updated_at",
   ]);
