@@ -221,30 +221,57 @@
   color: var(--text-4);
   font-size: 12px;
 }
-.side-foot {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  border-top: 1px solid var(--edge-soft);
-  padding-top: 10px;
+/* 应用面板：右上角的 3 列应用网格，当前应用高亮 */
+.app-panel {
+  z-index: 110;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 4px;
+  width: min(300px, calc(100vw - 24px));
+  padding: 14px 10px;
+  border: 1px solid var(--edge-soft);
+  border-radius: 20px;
+  background: var(--surface-float);
+  box-shadow: var(--shadow-3);
+  animation: pop-in 0.14s var(--swift);
 }
-.side-settings {
+.app-tile {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 10px;
-  flex: 1;
-  height: 38px;
-  padding: 0 10px;
-  border-radius: 10px;
-  text-decoration: none;
-  font-size: 14px;
-  font-weight: 500;
-  color: var(--text-2);
-}
-.side-settings:hover,
-.side-settings.on {
-  background: var(--row-hover);
+  gap: 8px;
+  padding: 12px 4px 10px;
+  border-radius: 14px;
   color: var(--text-1);
+  text-decoration: none;
+  transition: background 0.16s;
+}
+.app-tile:hover {
+  background: var(--hover);
+}
+.app-tile.current {
+  background: var(--accent-soft);
+}
+.app-tile-icon {
+  display: grid;
+  place-items: center;
+  width: 52px;
+  height: 52px;
+  border-radius: 16px;
+  color: #ffffff;
+}
+.app-chat .app-tile-icon {
+  background: linear-gradient(135deg, #1a9fff, #0a7cff);
+}
+.app-logs .app-tile-icon {
+  background: linear-gradient(135deg, #4cd9a1, #1fa971);
+}
+.app-settings .app-tile-icon {
+  background: linear-gradient(135deg, #9aa3ad, #6b7480);
+}
+.app-tile-name {
+  font-size: 13px;
+  font-weight: 500;
 }
 .dialog-field {
   display: flex;

@@ -8,6 +8,7 @@ import { Composer } from "./Composer";
 import { MessageStream } from "./MessageStream";
 import { ModelSelect } from "./ModelSelect";
 import { ThreadMenu } from "./ThreadMenu";
+import { AppSwitcher } from "../shell/AppSwitcher";
 import { createDraft, openThread, threadTitle, useThread } from "./store";
 
 // 标题下的副标题只显示一种状态：断线 > 正在回复 > 没有模型 > 模型选择。
@@ -81,6 +82,7 @@ export function ThreadView() {
             </Hint>
           )}
           <ThreadMenu />
+          <AppSwitcher />
         </div>
       </header>
       {loadError ? (

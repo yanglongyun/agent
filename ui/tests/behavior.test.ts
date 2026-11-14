@@ -25,6 +25,20 @@ import {
 import type { StreamEvent, GlobalFrame } from "../src/thread/stream";
 import { validateAttachments, isImageAttachment } from "../src/thread/attachments";
 import { nextPinnedIds, samePinnedIds } from "../src/shell/pinned";
+import { appForPath, launchPath, matchApp, rememberLocation, apps } from "../src/shell/apps";
+import {
+  costParts,
+  costShort,
+  costText,
+  describeCompaction,
+  describeMessage,
+  listTime,
+  ownerTitle,
+  rangeSince,
+  tokenChips,
+  tokensOf,
+  usd,
+} from "../src/logs/format";
 import { copyText } from "../src/lib/clipboard";
 import { usageSummary, costLabel } from "../src/thread/metering";
 
@@ -1496,4 +1510,213 @@ test("拖拽排序先乐观更新，以服务端确认为准；失败时回滚�
     ["c", null],
     ["d", null],
   ]);
+});
+
+test("应用面板：按地址判断当前应用，未知页面不属于任何应用，切回应用时回到上次停留的页面", () => {
+  assert.equal(matchApp("/")?.id, "chat");
+  assert.equal(matchApp("/sessions/abc")?.id, "chat");
+  assert.equal(matchApp("/logs")?.id, "logs");
+  assert.equal(matchApp("/logs/session/abc")?.id, "logs");
+  assert.equal(matchApp("/logs/overview")?.id, "logs");
+  assert.equal(matchApp("/settings")?.id, "settings");
+  // 前缀必须按路径段匹配，不能把 /logsx 当成日志。
+  assert.equal(matchApp("/logsx"), null);
+  assert.equal(matchApp("/nope"), null);
+  assert.equal(appForPath("/nope").id, "chat");
+  assert.deepEqual(
+    apps.map((app) => app.id),
+    ["chat", "logs", "settings"],
+  );
+
+  const chat = apps[0];
+  const logs = apps[1];
+  assert.equal(launchPath(chat), "/");
+  rememberLocation("/sessions/abc");
+  rememberLocation("/logs/session/xyz?x=1");
+  rememberLocation("/nope");
+  assert.equal(launchPath(chat), "/sessions/abc");
+  assert.equal(launchPath(logs), "/logs/session/xyz?x=1");
+  // 404 页不会覆盖任何应用的记忆。
+  assert.equal(launchPath(apps[2]), "/settings");
+});
+
+test("日志金额与 token 展示：未计费不显示成 $0，字段按固定顺序和中文名，未知字段保留原名", () => {
+  assert.equal(usd(0), "$0");
+  assert.equal(usd(1.123456), "$1.1235");
+  assert.equal(usd(0.000008), "$0.000008");
+  const cost = (amount: number, unpriced: number) => ({
+    amount,
+    currency: "USD",
+    unpriced_requests: unpriced,
+  });
+  assert.equal(costText(cost(0, 3), 3), "未计费");
+  assert.equal(costText(cost(0.5, 0), 3), "$0.5000");
+  assert.equal(costText(cost(0.5, 1), 3), "$0.5000 +1 次未计费");
+  assert.equal(costText(cost(0, 0), 0), "$0");
+  assert.deepEqual(
+    tokenChips({
+      cache_creation_input_tokens: 5,
+      output_tokens: 20,
+      input_tokens: 1000,
+      cache_read_input_tokens: 7,
+      weird_tokens: 9,
+      zero_tokens: 0,
+    }),
+    ["输入 1,000", "输出 20", "缓存读取 7", "缓存写入 5", "weird_tokens 9"],
+  );
+  assert.deepEqual(tokenChips({}), []);
+  // Claude 与 Chat 的字段口径不同，汇总到一起时标签必须不同名，不能出现两个「输入」。
+  assert.deepEqual(
+    tokenChips({ input_tokens: 3, prompt_tokens: 100, output_tokens: 2, completion_tokens: 9 }),
+    ["输入 3", "输出 2", "输入(prompt) 100", "输出(completion) 9"],
+  );
+  const part = { amount: 0.5, currency: "USD", unpriced_requests: 2 };
+  assert.deepEqual(costParts(part, 5), { value: "$0.5000", note: "另有 2 次请求未计费" });
+  assert.deepEqual(costParts({ ...part, unpriced_requests: 5 }, 5), { value: "未计费", note: "" });
+  assert.equal(costShort(part, 5), "$0.5000");
+  // 与服务端口径一致：只取顶层 *_tokens 的非负整数。
+  assert.deepEqual(
+    tokensOf({
+      input_tokens: 10,
+      output_tokens: 2.5,
+      total_tokens: -1,
+      note: "x",
+      input_tokens_details: { cached_tokens: 3 },
+    }),
+    { input_tokens: 10 },
+  );
+  assert.deepEqual(tokensOf(null), {});
+});
+
+test("日志时间范围与列表时间", () => {
+  const now = new Date(2026, 10, 14, 15, 30, 0).getTime();
+  assert.equal(rangeSince("all", now), 0);
+  assert.equal(new Date(rangeSince("today", now)).getHours(), 0);
+  assert.equal(new Date(rangeSince("today", now)).getDate(), 14);
+  assert.equal(rangeSince("7d", now), now - 7 * 86_400_000);
+  assert.equal(rangeSince("30d", now), now - 30 * 86_400_000);
+  assert.equal(listTime(new Date(2026, 10, 14, 9, 5, 0).getTime(), now), "09:05");
+  assert.equal(listTime(new Date(2026, 10, 3, 9, 5, 0).getTime(), now), "11月3日");
+});
+
+test("日志记录解析：用户/助手/思考/工具调用/工具结果/摘要各有类型，工具结果区分成功与失败", () => {
+  const user = describeMessage({
+    id: 1,
+    item: {
+      type: "message",
+      role: "user",
+      content: [
+        { type: "input_text", text: "你好" },
+        { type: "input_image", image_url: "/api/images/a.png" },
+      ],
+    },
+    meta: { attachments: [{ name: "a.txt", type: "text/plain", size: 1, url: "", path: "" }] },
+  });
+  assert.deepEqual(
+    [user.label, user.tone, user.text, user.images, user.files],
+    ["用户", "user", "你好", 1, ["a.txt"]],
+  );
+  const assistant = describeMessage({
+    id: 2,
+    item: { type: "message", role: "assistant", content: [{ type: "output_text", text: "回答" }] },
+  });
+  assert.deepEqual(
+    [assistant.label, assistant.tone, assistant.text],
+    ["助手", "assistant", "回答"],
+  );
+  const think = describeMessage({
+    id: 3,
+    item: { type: "reasoning", summary: [{ type: "summary_text", text: "想一想" }] },
+  });
+  assert.deepEqual([think.label, think.tone, think.text], ["思考", "think", "想一想"]);
+  const call = describeMessage({
+    id: 4,
+    item: { type: "function_call", call_id: "c1", name: "shell", arguments: '{"command":"ls"}' },
+  });
+  assert.equal(call.label, "工具调用");
+  assert.equal(call.title, "shell");
+  assert.equal(call.text, JSON.stringify({ command: "ls" }, null, 2));
+  assert.equal(call.mono, true);
+  const brokenCall = describeMessage({
+    id: 5,
+    item: { type: "function_call", call_id: "c2", name: "read", arguments: "{坏的" },
+  });
+  assert.equal(brokenCall.text, "{坏的");
+  const success = describeMessage({
+    id: 6,
+    item: {
+      type: "function_call_output",
+      call_id: "c1",
+      output: JSON.stringify({ success: true, text: "a.txt" }),
+    },
+  });
+  assert.deepEqual(
+    [success.label, success.tone, success.text, success.ok],
+    ["工具结果", "result", "a.txt", true],
+  );
+  const failure = describeMessage({
+    id: 7,
+    item: {
+      type: "function_call_output",
+      call_id: "c1",
+      output: JSON.stringify({ success: false, text: "没有权限" }),
+    },
+  });
+  assert.deepEqual([failure.text, failure.ok], ["没有权限", false]);
+  const withImage = describeMessage({
+    id: 8,
+    item: {
+      type: "function_call_output",
+      call_id: "c3",
+      output: [
+        { type: "input_text", text: JSON.stringify({ success: true, text: "截图" }) },
+        { type: "input_image", image_url: "/api/images/b.png" },
+      ],
+    },
+  });
+  assert.deepEqual([withImage.text, withImage.images, withImage.ok], ["截图", 1, true]);
+  const plain = describeMessage({
+    id: 9,
+    item: { type: "function_call_output", call_id: "c4", output: "不是约定格式" },
+  });
+  assert.deepEqual([plain.text, plain.ok], ["不是约定格式", null]);
+  const summary = describeCompaction({ id: 1, through_id: 42, summary: "摘要内容", created_at: 1 });
+  assert.deepEqual(
+    [summary.label, summary.tone, summary.title, summary.text],
+    ["摘要", "summary", "已压缩到第 42 条", "摘要内容"],
+  );
+});
+
+test("日志对象标题：对话没有标题时用首条消息预览，任务用任务文本", () => {
+  const base = {
+    session_id: null,
+    session_title: null,
+    model: null,
+    status: null,
+    cost: { amount: 0, currency: "USD", unpriced_requests: 0 },
+    request_count: 0,
+    message_count: 0,
+    created_at: 1,
+    updated_at: 1,
+  };
+  assert.equal(
+    ownerTitle({ ...base, kind: "session", id: "a", title: "标题", preview: "预览" }),
+    "标题",
+  );
+  assert.equal(
+    ownerTitle({ ...base, kind: "session", id: "a", title: "", preview: "预览" }),
+    "预览",
+  );
+  assert.equal(
+    ownerTitle({ ...base, kind: "session", id: "a", title: "", preview: "" }),
+    "未命名对话",
+  );
+  assert.equal(
+    ownerTitle({ ...base, kind: "task", id: "t", title: "跑测试", preview: "" }),
+    "跑测试",
+  );
+  assert.equal(
+    ownerTitle({ ...base, kind: "task", id: "t", title: "", preview: "" }),
+    "未命名任务",
+  );
 });

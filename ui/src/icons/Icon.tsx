@@ -40,6 +40,9 @@ import {
   Download,
   Pin,
   PinOff,
+  LayoutGrid,
+  ScrollText,
+  ArrowLeft,
 } from "lucide-react";
 
 // 全部界面使用 Lucide 同一套描边图标，按需打包。
@@ -85,6 +88,9 @@ const glyphs = {
   download: Download,
   pin: Pin,
   pinOff: PinOff,
+  grid: LayoutGrid,
+  logs: ScrollText,
+  back: ArrowLeft,
 };
 export type IconName = keyof typeof glyphs;
 export function Icon({

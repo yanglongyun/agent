@@ -9,7 +9,7 @@ import { ModelsSettings } from "./ModelSettings";
 import type { ModelSettings } from "../lib/models";
 import { Icon } from "../icons/Icon";
 import { loadStatus, useThread } from "../thread/store";
-import { useShell } from "./layout";
+import { AppBar } from "./AppBar";
 
 interface ConfigView {
   models: Omit<ModelSettings, "key">[];
@@ -66,7 +66,6 @@ export function Settings() {
   const [saving, setSaving] = useState(false);
   const theme = useTheme((state) => state.mode);
   const status = useThread((state) => state.status);
-  const shell = useShell();
 
   useEffect(() => {
     void api
@@ -149,16 +148,7 @@ export function Settings() {
 
   return (
     <section className="settings-page">
-      <header className="topbar">
-        <button
-          className={`icon-btn menu-btn${shell.collapsed ? " show" : ""}`}
-          aria-label="展开侧栏"
-          onClick={shell.openSidebar}
-        >
-          <Icon name="panel" size={17} />
-        </button>
-        <span className="topbar-title">设置</span>
-      </header>
+      <AppBar title="设置" />
       <div className="settings-layout">
         <nav className="settings-nav" aria-label="设置分区">
           <span className="settings-nav-label">工作区设置</span>

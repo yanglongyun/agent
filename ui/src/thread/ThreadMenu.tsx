@@ -91,6 +91,15 @@ export function ThreadMenu() {
               <span className="menu-item-label">对话详情与用量</span>
             </Dropdown.Item>
             {currentId && (
+              <Dropdown.Item
+                className="dropdown-item"
+                onSelect={() => navigate(`/logs/session/${currentId}`)}
+              >
+                <Icon name="logs" size={16} />
+                <span className="menu-item-label">在日志中查看</span>
+              </Dropdown.Item>
+            )}
+            {currentId && (
               <>
                 <Dropdown.Separator className="dropdown-separator" />
                 <Dropdown.Item className="dropdown-item" onSelect={openRename}>

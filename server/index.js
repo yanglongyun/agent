@@ -57,8 +57,10 @@ export function createServer({ p = paths(), config = loadConfig(p) } = {}) {
         let filename = path.join(publicDir, ...parts);
         const pageRoute =
           parts.length === 0 ||
-          (parts.length === 1 && ["login", "settings"].includes(parts[0])) ||
-          (parts.length === 2 && parts[0] === "sessions");
+          (parts.length === 1 && ["login", "settings", "logs"].includes(parts[0])) ||
+          (parts.length === 2 &&
+            (parts[0] === "sessions" || (parts[0] === "logs" && parts[1] === "overview"))) ||
+          (parts.length === 3 && parts[0] === "logs" && ["session", "task"].includes(parts[1]));
         if (pageRoute) {
           filename = path.join(publicDir, "index.html");
         }

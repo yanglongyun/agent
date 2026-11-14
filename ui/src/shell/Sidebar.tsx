@@ -1,10 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
-import { Link, NavLink, useLocation, useNavigate } from "react-router";
-import { Icon, type IconName } from "../icons/Icon";
+import { Link, useLocation, useNavigate } from "react-router";
+import { Icon } from "../icons/Icon";
 import { Hint } from "../overlay/Hint";
 import { Sheet } from "../overlay/Sheet";
-import { cycleTheme, useTheme } from "../lib/theme";
 import {
   createDraft,
   isPinned,
@@ -36,7 +35,6 @@ export function Sidebar() {
   const location = useLocation();
   const navigate = useNavigate();
   const { threads, currentId, busy } = useThread();
-  const theme = useTheme((state) => state.mode);
   const [search, setSearch] = useState("");
   const [renaming, setRenaming] = useState<Thread | null>(null);
   const [renameText, setRenameText] = useState("");
@@ -122,16 +120,10 @@ export function Sidebar() {
       }}
     />
   );
-  const themeNames = { auto: "跟随系统", light: "浅色", dark: "深色" };
-  const themeIcons: Record<typeof theme, IconName> = {
-    auto: "monitor",
-    light: "sun",
-    dark: "moon",
-  };
   const content = (
     <>
       <div className="side-head">
-        <span className="side-brand">聊天</span>
+        <span className="side-brand">对话</span>
         <span className="grow" />
         <Hint text="新对话">
           <Link
@@ -211,25 +203,6 @@ export function Sidebar() {
           </div>
         )}
       </nav>
-      <div className="side-foot">
-        <NavLink
-          to="/settings"
-          className={({ isActive }) => `side-settings${isActive ? " on" : ""}`}
-          onClick={shell.closeDrawer}
-        >
-          <Icon name="settings" size={17} />
-          <span>设置</span>
-        </NavLink>
-        <Hint text={`主题：${themeNames[theme]}`}>
-          <button
-            className="icon-btn"
-            aria-label={`切换主题，当前${themeNames[theme]}`}
-            onClick={cycleTheme}
-          >
-            <Icon name={themeIcons[theme]} size={17} />
-          </button>
-        </Hint>
-      </div>
     </>
   );
   return (

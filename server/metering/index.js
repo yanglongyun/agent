@@ -11,6 +11,64 @@ export function withCost(row) {
   };
 }
 
+// 把一批请求汇总成请求数、金额、各类 token 和按模型的分组。
+// rows 的每一项是 { usage: 厂商原始用量 | null, measurement: 计量快照 | null }。
+// token 只对 usage 顶层以 _tokens 结尾的非负整数字段按原样求和，不改名也不归一；
+// 金额按十亿分之一美元的整数累加，避免浮点误差；没有计量或没有金额的请求计入未计费。
+function addRow(bucket, row) {
+  bucket.requests += 1;
+  const cost = row.measurement?.cost;
+  if (cost && typeof cost.amount === "number" && Number.isFinite(cost.amount)) {
+    bucket.nanos += Math.round(cost.amount * 1e9);
+  } else {
+    bucket.unpriced += 1;
+  }
+  for (const [key, value] of Object.entries(row.usage ?? {})) {
+    if (key.endsWith("_tokens") && count(value)) {
+      bucket.tokens[key] = (bucket.tokens[key] ?? 0) + value;
+    }
+  }
+}
+
+function emptyBucket() {
+  return { requests: 0, nanos: 0, unpriced: 0, tokens: {} };
+}
+
+function bucketCost(bucket) {
+  return { amount: bucket.nanos / 1e9, currency: "USD", unpriced_requests: bucket.unpriced };
+}
+
+export function summarizeUsage(rows) {
+  const total = emptyBucket();
+  const byModel = new Map();
+  for (const row of rows) {
+    addRow(total, row);
+    const model = row.measurement?.model || "未知";
+    let bucket = byModel.get(model);
+    if (!bucket) {
+      bucket = emptyBucket();
+      byModel.set(model, bucket);
+    }
+    addRow(bucket, row);
+  }
+  const models = [...byModel].map(([model, bucket]) => ({
+    model,
+    requests: bucket.requests,
+    cost: bucketCost(bucket),
+    tokens: bucket.tokens,
+  }));
+  models.sort((a, b) => {
+    if (a.requests !== b.requests) {
+      return b.requests - a.requests;
+    }
+    if (a.model === b.model) {
+      return 0;
+    }
+    return a.model < b.model ? -1 : 1;
+  });
+  return { requests: total.requests, cost: bucketCost(total), tokens: total.tokens, models };
+}
+
 // 压缩只使用厂商已报告的用量；不修改 usage，也不估算历史长度。
 export function contextTokens(usage, protocol) {
   if (!usage) {

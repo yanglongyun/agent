@@ -8,6 +8,7 @@ import attachments from "./attachments/index.js";
 import processes from "./processes/index.js";
 import tasks from "./tasks/index.js";
 import events from "./events/index.js";
+import logs from "./logs/index.js";
 import { createEvents } from "../events.js";
 import { createTaskManager } from "../tasks.js";
 import { fail } from "./http.js";
@@ -35,6 +36,8 @@ export default function createApi(context) {
         return tasks(req, res, rest, context);
       case "sessions":
         return sessions(req, res, rest, context);
+      case "logs":
+        return logs(req, res, rest, context);
       case "config":
         return config(req, res, rest, context);
       case "status":
