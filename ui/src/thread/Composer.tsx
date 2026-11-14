@@ -1,9 +1,10 @@
-import { useNavigate } from "react-router";
+import { Link, useNavigate } from "react-router";
 import { useEffect, useRef, useState } from "react";
 
 import { Icon } from "../icons/Icon";
 import { send, stopRun, useThread, selectedModel } from "./store";
 import { useDraftSeed } from "./draft";
+import { ModelSelect } from "./ModelSelect";
 import { toast } from "../overlay/toast";
 import { ChatInputFrame, FilePreview } from "../components/ruixen/ChatInput";
 import { Hint } from "../overlay/Hint";
@@ -24,12 +25,13 @@ export function Composer() {
   const readingAttachments = useRef(false);
   const areaRef = useRef<HTMLTextAreaElement>(null);
   const state = useThread();
-  const { busy, stopping, currentId, connected } = state;
+  const { busy, stopping, currentId, connected, status } = state;
+  const noModels = Boolean(status && status.models.length === 0);
   const model = selectedModel(state);
   const seed = useDraftSeed();
 
   // 草稿按对话落 localStorage,重启不丢;空白草稿记在 blank 键下
-  const draftKey = `agentic.draft:${currentId || "blank"}`;
+  const draftKey = `agent.draft:${currentId || "blank"}`;
   useEffect(() => {
     attachmentVersion.current++;
     readingAttachments.current = false;
@@ -115,7 +117,7 @@ export function Composer() {
 
   const autosize = (element: HTMLTextAreaElement) => {
     element.style.height = "auto";
-    element.style.height = `${Math.min(element.scrollHeight, 160)}px`;
+    element.style.height = `${Math.min(element.scrollHeight, 220)}px`;
   };
 
   // 起手卡点了 → 填进输入框(不发),光标落尾部
@@ -176,7 +178,33 @@ export function Composer() {
             {reading && <span className="composer-reading">正在读取附件…</span>}
           </div>
         )}
-        <div className="composer-row">
+        <textarea
+          ref={areaRef}
+          rows={1}
+          value={text}
+          placeholder={connected ? "有什么想让我做的？" : "正在重新连接…"}
+          aria-label="消息"
+          onPaste={(event) => {
+            const files = Array.from(event.clipboardData.files);
+            if (files.length > 0) {
+              event.preventDefault();
+              void addAttachments(files);
+            }
+          }}
+          onChange={(event) => {
+            setText(event.target.value);
+            persistDraft(event.target.value);
+            autosize(event.target);
+          }}
+          onKeyDown={(event) => {
+            if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing) {
+              return;
+            }
+            event.preventDefault();
+            submit();
+          }}
+        />
+        <div className="composer-bar" onClick={(event) => event.stopPropagation()}>
           <input
             ref={attachmentInput}
             type="file"
@@ -190,68 +218,45 @@ export function Composer() {
           <Hint text="添加附件 · 最多 5 个">
             <button
               type="button"
-              className="attachment-picker"
+              className="icon-btn"
               aria-label="添加附件"
               disabled={busy || reading || attachments.length === 5}
-              onClick={(event) => {
-                event.stopPropagation();
-                attachmentInput.current?.click();
-              }}
+              onClick={() => attachmentInput.current?.click()}
             >
-              <Icon name="attachment" size={20} />
+              <Icon name="attachment" size={18} />
             </button>
           </Hint>
-          <textarea
-            ref={areaRef}
-            rows={1}
-            value={text}
-            placeholder={connected ? "发消息…" : "正在重新连接…"}
-            aria-label="消息"
-            onPaste={(event) => {
-              const files = Array.from(event.clipboardData.files);
-              if (files.length > 0) {
-                event.preventDefault();
-                void addAttachments(files);
-              }
-            }}
-            onChange={(event) => {
-              setText(event.target.value);
-              persistDraft(event.target.value);
-              autosize(event.target);
-            }}
-            onKeyDown={(event) => {
-              if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing) {
-                return;
-              }
-              event.preventDefault();
-              submit();
-            }}
-          />
+          {noModels ? (
+            <Link to="/settings" className="model-chip is-warn">
+              <Icon name="alert" size={14} />
+              请先添加模型
+            </Link>
+          ) : (
+            <ModelSelect />
+          )}
+          <span className="grow" />
           {busy ? (
-            <button
-              className="round stop"
-              title={stopping ? "正在停止…" : "停止"}
-              aria-label="停止"
-              disabled={stopping}
-              onClick={(event) => {
-                event.stopPropagation();
-                stopRun();
-              }}
-            >
-              <Icon name="stop" size={15} />
-            </button>
+            <Hint text={stopping ? "正在停止…" : "停止"}>
+              <button
+                type="button"
+                className="send-btn stop"
+                aria-label="停止"
+                disabled={stopping}
+                onClick={() => stopRun()}
+              >
+                <Icon name="stop" size={13} />
+              </button>
+            </Hint>
           ) : (
             <button
-              className="round go"
+              type="button"
+              className="send-btn go"
               title="发送"
               aria-label="发送"
               disabled={!canSend}
-              onClick={(event) => {
-                event.stopPropagation();
-                submit();
-              }}
+              onClick={submit}
             >
-              <Icon name="send" size={17} />
+              <Icon name="send" size={18} />
             </button>
           )}
         </div>

@@ -1,4 +1,4 @@
-# agentic
+# agent
 
 一个简单的自托管 Agent：浏览器发消息，服务器调用模型，执行六个工具，流式返回事件。
 
@@ -37,6 +37,15 @@ server/
           post.js            发送消息、接收 Agent 事件、保存消息和压缩记录
         compactions/index.js 查询压缩记录
         cancel/index.js      取消当前回复
+    notes/
+      index.js               分发 HTTP 方法或进入 [id]
+      get.js                 笔记列表
+      post.js                新建笔记
+      [id]/
+        index.js             分发笔记方法
+        get.js               笔记详情
+        put.js               保存标题和正文
+        delete.js            删除笔记
     config/
       index.js               分发 GET / PUT
       get.js                 查看配置
@@ -92,7 +101,7 @@ npm run ui:build
 npm start
 ```
 
-打开启动日志中的地址，使用日志中的访问令牌登录，在设置的模型列表里逐个添加名称、协议、接口地址、模型 ID、API Key 和上下文窗口。模型列表不分配用途；在每个对话顶栏的标题下方切换对话模型，上下文压缩自动沿用同一模型。浏览器会记住最近使用的模型：新对话和刷新后默认沿用它，从未选择过时使用列表第一个模型。选择保存在该次用户消息的 `meta.model_id`、`meta.compact_model_id`，已有对话优先恢复自己最近提交的模型，所选模型被移除时回退到最近使用的模型或列表第一个。支持 OpenAI Responses（`responses`）、OpenAI Chat Completions（`chat-completions`）与 Claude Messages（`anthropic-messages`）。接口地址填写完整 URL，不根据协议重写路径。
+打开启动日志中的地址，使用日志中的访问令牌登录，在设置的模型列表里逐个添加名称、协议、接口地址、模型 ID、API Key 和上下文窗口。模型列表不分配用途；在输入区底部的工具条里切换对话模型，上下文压缩自动沿用同一模型。浏览器会记住最近使用的模型：新对话和刷新后默认沿用它，从未选择过时使用列表第一个模型。选择保存在该次用户消息的 `meta.model_id`、`meta.compact_model_id`，已有对话优先恢复自己最近提交的模型，所选模型被移除时回退到最近使用的模型或列表第一个。支持 OpenAI Responses（`responses`）、OpenAI Chat Completions（`chat-completions`）与 Claude Messages（`anthropic-messages`）。接口地址填写完整 URL，不根据协议重写路径。
 
 Chat Completions 使用 `/v1/chat/completions` 和 Bearer 鉴权；流式请求开启 `stream_options.include_usage`，在 `[DONE]` 前读取最终 usage。消息、图片、工具定义、`tool_calls` 和 `tool` 结果转换集中在 `server/ai/chat.js`；工具参数片段收齐后才交付执行，截断或断流不作为成功响应。可选的原生 `reasoning_content` 转为内部 reasoning，仅向同一端点和模型回送。Chat 的工具结果图片在请求适配层转换为后续视觉输入，内部仍只保存工具结果。Claude Messages 使用 `x-api-key` 和 `anthropic-version: 2023-06-01`。
 
@@ -102,7 +111,7 @@ GPT-6 Luna 和 GPT-6 Sol 的 Chat 工具请求按模型要求设置 `reasoning_e
 
 主模型、压缩提示词和摘要前缀均为静态文本，不替换变量。操作系统、架构、主机、用户、工作目录和当前时间在用户消息创建时采集，存入 `messages.meta.environment`；`item` 只保存用户正文和图片。加载模型上下文时从快照生成最后一个 input_text 块，历史读取和工具循环不会重新采集环境信息；正文展示和复制只使用 item，附件卡片来自 meta.attachments。会话预览只取用户的正文或图片标记。Claude thinking 原块仅在端点、模型、系统指令、工具定义及此前消息均未改变时回送；修改配置或压缩历史后，只在当前请求中排除失效原块，已保存消息保持原样。
 
-开发界面：另开终端运行 `npm run ui:dev`，Vite 代理 `/api` 到本机 9500 端口。改后端可用 `npm run dev`。
+开发界面：另开终端运行 `npm run ui:dev`，Vite 代理 `/api` 到本机 9500 端口（接到其他实例时设置 `AGENT_API`，例如 `AGENT_API=http://127.0.0.1:9511 npm run ui:dev`）。改后端可用 `npm run dev`。
 
 ```sh
 npm run format              # 统一格式化源码
@@ -184,7 +193,7 @@ CREATE INDEX idx_compactions_session ON compactions(session_id, id);
 - `messages.usage` 保存模型返回的原始 usage JSON，每次响应只放在最后一条模型输出上。用户消息和工具结果为 NULL；模型没有返回 usage 也存 NULL。
 - 每次请求模型之前，用计量模块读取的上次实际 token 数与 `compact_at` 比较（大于等于时压缩）。Responses 和 Chat Completions 使用 `usage.total_tokens`，Claude 使用原生输入、缓存读取、缓存写入和输出之和。用户发消息时从数据库读最近模型输出的 usage 和计量信息；工具执行后继续循环时使用本次模型返回的用量。不累加历史 usage，不估算 token。
 - usage 反映上次响应的实际用量，不包含后来新增的用户输入和工具结果。没有有效用量就跳过判断，不回退到更早的 usage。
-- `models` 是模型连接的唯一来源，每个条目包含 `id`、`name`、`model`、`protocol`、`url`、`key`、`context_window`。模型用途由每次请求的 `model_id`、`compact_model_id` 明确指定，配置文件不保存全局用途；Web 界面在顶栏选择模型并让压缩沿用对话模型，CLI 和接口仍可分别指定。主请求、压缩和子 Agent 均使用所选条目的独立连接，支持跨厂商。配置接口只返回 `key_set`，保存时空密钥只按同一条目 ID 保留原值，移除条目后，Web 对话自动回退到最近使用的模型或模型列表第一项（无模型时提示先添加模型）。压缩模型必须能容纳待总结的历史。
+- `models` 是模型连接的唯一来源，每个条目包含 `id`、`name`、`model`、`protocol`、`url`、`key`、`context_window`。模型用途由每次请求的 `model_id`、`compact_model_id` 明确指定，配置文件不保存全局用途；Web 界面在输入区选择模型并让压缩沿用对话模型，CLI 和接口仍可分别指定。主请求、压缩和子 Agent 均使用所选条目的独立连接，支持跨厂商。配置接口只返回 `key_set`，保存时空密钥只按同一条目 ID 保留原值，移除条目后，Web 对话自动回退到最近使用的模型或模型列表第一项（无模型时提示先添加模型）。压缩模型必须能容纳待总结的历史。
 - `compact_on_cache_expiry` 开启后，自上次模型响应结束超过 `cache_ttl` 秒，在下一次模型请求前压缩，即使未达 token 阈值。有效期默认 300 秒，仅用于本地过期判断，不改变厂商缓存设置，也不代表接口报告了精确失效时刻；按接口策略调整。新会话没有上次响应时不触发；最近消息与完整工具边界仍受 `keep` 保护。空闲时不后台请求。
 - 压缩先发 compact.started，成功后通过 compact.completed 交付标准 user 摘要和数组覆盖范围；先保存摘要与本次压缩 usage，再让 Agent 继续。压缩失败会终止本次运行。最终回答结束后不立即压缩，等下次请求模型前判断。
 - 每次压缩追加一条记录，summary 保存标准 user 摘要块的完整文字，`through_id` 表示已总结到哪条消息（包含该条），`usage` 保存压缩请求返回的原始 usage JSON。
@@ -201,13 +210,13 @@ CREATE INDEX idx_compactions_session ON compactions(session_id, id);
 
 AI 回答后的操作栏提供复制与「更多」菜单（含「从此处创建分支」、本轮「用量与费用」和「执行过程」）。分支复制截至该回答的对话、工具记录、图片及当时已有的摘要，创建后打开新对话，标题为「原标题（2）」，同名时递增编号。图片独立保存，删除原对话不会影响分支；历史环境快照保持原样。继承内容不重复计费，分支累计费用从零开始，不复制原对话中的运行任务或命令。接口为 `POST /api/sessions/:id/branches`，请求体 `{ "message_id": 回答消息ID }`。
 
-模型响应的 `usage` 按厂商原样保存，Claude 不补 total_tokens 或改写 input_tokens；Chat 保留 prompt_tokens、completion_tokens 及其原生明细，不改名。`server/metering/index.js` 负责压缩用量和费用计算，`server/metering/rules.js` 维护模型标价；支持 gpt-6-luna、gpt-6.1-terra、gpt-6.1-sol（Responses 和 Chat 共用同一份模型价格）、claude-fable-5-2、claude-sonnet-5-5、claude-opus-5-5。
+模型响应的 `usage` 按厂商原样保存，Claude 不补 total_tokens 或改写 input_tokens；Chat 保留 prompt_tokens、completion_tokens 及其原生明细，不改名。`server/metering/index.js` 负责压缩用量和费用计算，`server/metering/rules.js` 维护模型标价；支持 gpt-6-luna、gpt-6.1-terra、gpt-6.1-sol（Responses 和 Chat 共用同一份模型价格）、deepseek-flash（按高峰与平峰时段）、claude-fable-5-2、claude-sonnet-5-5、claude-opus-5-5。
 
-规则按 USD / 百万 token 计价，价格依据 [OpenAI 官方价格](https://developers.openai.com/api/docs/pricing)和 [Claude 官方价格](https://platform.claude.com/docs/en/about-claude/pricing)，于 2026-11-10 核对。普通输入、输出、缓存读取和不同 TTL 的缓存写入分别收费，GPT 输入超过 272000 token 时使用长上下文价格，推理 token 不重复收费。网关请求按公开标价预估，不代表网关实际扣费。未知模型、未知计费档位或不完整用量不会显示为零费用。
+规则按 USD / 百万 token 计价，价格依据 [OpenAI 官方价格](https://developers.openai.com/api/docs/pricing)、[DeepSeek 官方价格](https://api-docs.deepseek.com/quick_start/pricing)和 [Claude 官方价格](https://platform.claude.com/docs/en/about-claude/pricing)，按各规则的核对日期（`checked`）记录。普通输入、输出、缓存读取和不同 TTL 的缓存写入分别收费，GPT 输入超过 272000 token 时使用长上下文价格，推理 token 不重复收费。DeepSeek 以请求完成时刻的 UTC 判断时段：周一至周五 01:00-04:00、06:00-10:00 为高峰，其余时间为平峰，中国法定假日未内置。网关请求按公开标价预估，不代表网关实际扣费。未知模型、未知计费档位或不完整用量不会显示为零费用。
 
 计量表保存当次模型、端点、原始用量对应的上下文计数以及价格明细快照；修改规则不会重算历史费用。主对话流保持纯聊天呈现，不内联工具调用与 Token 计数；每条回答的「更多」菜单可打开该轮的用量与费用弹窗（汇总多次请求及原始 usage JSON），摘要弹窗展示压缩详情与用量。Web 与 CLI 共用保存逻辑，消息、usage 和计量快照在同一事务提交。
 
-sessions 和 tasks 的 total_cost_nanos 以十亿分之一美元累计已记录费用，request_count 和 unpriced_requests 保存计量请求数及未计费数；新增明细与累计字段的原子更新在同一事务提交。任务金额只包含自身请求和自身压缩；会话金额包含主对话、全部子任务及各自压缩，不重复累计父子任务。对话累计总额收进顶栏右上角「更多 → 对话详情与用量」弹窗；分页、刷新和重新打开读取累计快照，不从当前加载的消息重算。尚未计费的请求单独显示，不作为零费用处理。
+sessions 和 tasks 的 total_cost_nanos 以十亿分之一美元累计已记录费用，request_count 和 unpriced_requests 保存计量请求数及未计费数；新增明细与累计字段的原子更新在同一事务提交。任务金额只包含自身请求和自身压缩；会话金额包含主对话、全部子任务及各自压缩，不重复累计父子任务。对话累计总额收进对话右上角「更多 → 对话详情」弹窗；分页、刷新和重新打开读取累计快照，不从当前加载的消息重算。尚未计费的请求单独显示，不作为零费用处理。
 
 图片保存在数据目录的 `images/` 下。图片工具结果使用标准 `function_call_output.output` 数组，数据库和事件中的 `input_image.image_url` 只保存 `/api/images/文件名`，不保存 Base64。AI 请求入口读取图片文件，仅在本次请求中替换为 data URL；原始消息不变。前端通过带登录鉴权的图片接口显示工具图片。业务层通过运行配置 `images_dir` 指定图片目录。
 
@@ -235,6 +244,8 @@ sessions 和 tasks 的 total_cost_nanos 以十亿分之一美元累计已记录�
 | GET                  | `/api/logs/records?kind=&id=&type=&q=&before=&limit=` | 某个对话或子任务的全部记录、压缩摘要与终身汇总                                      |
 | POST                 | `/api/sessions/:id/cancel`                            | 停止并等待当前回复清理完成                                                          |
 | GET                  | `/api/sessions/:id/compactions`                       | 压缩记录                                                                            |
+| GET / POST           | `/api/notes`                                          | 笔记列表 / 新建 `{ title?, body? }`                                                 |
+| GET / PUT / DELETE   | `/api/notes/:id`                                      | 查看 / 保存 `{ title?, body? }` / 删除笔记                                          |
 | GET                  | `/healthz`                                            | 服务存活检查                                                                        |
 
 每个页面只有一条 `GET /api/events` SSE。发送消息使用普通 POST，输入保存并注册任务后立即返回 `202 { epoch, cursor, run_id, message, session }`。输出由全局流推送：`{ epoch, cursor, session_id, run_id, event }`，其中 event 仍是原有九种 Agent 事件及保存确认。某个回复的 done 不关闭全局连接。新增、改名、分支通过 `{ session }` 更新列表，删除通过 `{ deleted_session_id }` 同步。
@@ -286,7 +297,7 @@ npm run release:pack -- --platform linux --arch amd64
 
 平台支持 `linux / darwin / windows`，架构支持 `amd64 / arm64`。打包器下载并校验固定版本 Node.js，产物位于 `server/dist/`。安装时校验 SHA-256；`AGENT_RELEASE_BASE_URL` 可指定私有发布镜像，`AGENT_NO_SERVICE=1` 可只安装不启动。
 
-数据默认放在 Linux `~/.config/agentic`、macOS `~/Library/Application Support/agentic`、Windows `%APPDATA%/agentic`。可用 `AGENT_HOME` 指定目录。该目录包含 `config.json`、`agent.db` 及 SQLite 日志文件。
+数据默认放在 Linux `~/.config/agent`、macOS `~/Library/Application Support/agent`、Windows `%APPDATA%/agent`。可用 `AGENT_HOME` 指定目录。该目录包含 `config.json`、`agent.db` 及 SQLite 日志文件。
 
 ### 验证代码
 
@@ -302,26 +313,29 @@ npm run format:check
 
 ### 页面路由
 
-界面采用 Google 式的应用外壳：每个页面右上角都有「应用」面板，**对话、日志、设置是并列的三个应用**，切换时回到该应用上次停留的页面（比如从日志回到刚才那个对话）。使用统一的浅色、深色设计变量与 Lucide 图标，Radix 提供弹窗、菜单、提示和详情浮层的键盘交互、焦点管理及视口避让。
+界面是一副三栏外壳，所有页面共用：最左是应用导航（对话、记事本、日志在上，主题切换和设置在下），中间是当前应用的列表栏，右边是内容舞台。**对话、记事本、日志、设置是并列的四个应用**，切换时回到该应用上次停留的页面（比如从日志回到刚才那个对话）。列表栏可以收起；窄屏下导航和列表栏一起收进左侧抽屉，弹窗变成底部弹层。全部页面使用同一套浅色、深色设计变量、同一套按钮、输入、分段、徽章和卡片，图标用 Lucide，Radix 提供弹窗、菜单、提示和详情浮层的键盘交互、焦点管理及视口避让。
 
-- **对话**：左侧是会话列表（搜索、置顶、运行状态指示），只在对话应用里出现。顶栏展示对话标题、模型切换、连接/回复状态，右侧是「更多」菜单（任务与后台命令、对话详情与用量、在日志中查看、重命名、删除）和应用面板。消息区只呈现聊天气泡与打字状态，工具过程与用量收进每条回答的「更多」菜单，搭配单行胶囊输入区，浏览历史时可回到最新消息。
+- **对话**：列表栏是会话列表（搜索、新对话、置顶、运行状态指示）。舞台顶部是对话标题和回复状态，右侧是「更多」菜单（任务与后台命令、对话详情、在日志中查看、重命名、删除）。消息区里用户消息是右侧气泡，回答是正文排版，代码块带语言名和复制按钮；工具过程与用量收进每条回答的「更多」菜单，浏览历史时可回到最新消息。输入区底部工具条里添加附件、切换模型、发送或停止。新对话时输入区居中，下方有几条起手式。
 - **日志**：查询每个对话和子任务的全部记录与 token、费用，见下文「日志」。
-- **设置**：按模型、指令、压缩、执行与外观分区，保存操作固定在底部；主题和退出登录也在这里。
+- **记事本**：列表栏是笔记（搜索、新建、最近修改时间），舞台是标题加正文的编辑器。输入停顿后自动保存，切换笔记或离开页面时补存还没提交的改动；标题为空时显示「未命名笔记」。
+- **设置**：列表栏是分区导航（模型、指令、上下文压缩、执行环境、外观、服务、关于、账户），滚动时高亮当前分区；有未保存的更改时底部浮出保存条，可以保存或放弃。主题也可以在应用导航底部直接切换。
 
 输入框与附件预览参考并适配了 [Ruixen UI Claude Chat Input](https://ruixen.com/docs/components/claude-chat-input) 的免费源码，适配组件位于 `ui/src/components/ruixen/ChatInput.tsx`，MIT 许可见 [ui/public/licenses/Ruixen-UI-MIT.md](ui/public/licenses/Ruixen-UI-MIT.md)。项目继续使用 Vite 和现有 CSS 变量，不依赖 Ruixen Pro、Next.js 或 Tailwind。
 
 前端使用 React Router，页面入口定义在 `ui/src/router.tsx`。
 
-| URL                 | 页面                         |
-| ------------------- | ---------------------------- |
-| `/`                 | 新对话                       |
-| `/sessions/:id`     | 指定会话                     |
-| `/logs`             | 日志（宽屏默认显示用量总览） |
-| `/logs/overview`    | 用量总览                     |
-| `/logs/session/:id` | 某个对话的日志               |
-| `/logs/task/:id`    | 某个子任务的日志             |
-| `/settings`         | 设置                         |
-| `/login`            | 登录                         |
+| URL                 | 页面                     |
+| ------------------- | ------------------------ |
+| `/`                 | 新对话                   |
+| `/sessions/:id`     | 指定会话                 |
+| `/logs`             | 日志（默认显示用量总览） |
+| `/logs/overview`    | 用量总览                 |
+| `/logs/session/:id` | 某个对话的日志           |
+| `/logs/task/:id`    | 某个子任务的日志         |
+| `/notes`            | 记事本                   |
+| `/notes/:id`        | 指定笔记                 |
+| `/settings`         | 设置                     |
+| `/login`            | 登录                     |
 
 URL 决定当前页面和会话。支持直接打开、刷新、前进后退；新会话创建后用会话 URL 替换新对话入口。未登录时先进入登录页，登录成功后回到原页面。服务器只为这些页面路径返回 `ui/dist/index.html`（`/logs/session|task/:id` 只接受这两种类型），未知资源和 API 保持各自的错误响应。
 
@@ -341,7 +355,7 @@ URL 决定当前页面和会话。支持直接打开、刷新、前进后退；�
 
 后台命令跨主对话回复运行，不设自动超时；停止或删除会话、服务退出时清理命令及其子进程。子 Agent 启动的后台命令在该任务结束时清理。每个会话最多同时运行 8 条命令。Web 和 CLI 共用执行器及 shell_jobs 记录；CLI 退出前清理命令。服务意外退出后，历史记录显示已中断，不自动重启命令。
 
-界面从顶栏右上角「更多 → 任务与后台命令」弹窗区分子 Agent 和后台命令（有任务运行中时右上角显示状态绿点）。后台命令弹窗显示命令、工作目录、输出与退出码，可发送输入、结束输入和停止命令。stdio 操作不生成重复条目，后台命令不计模型费用。
+界面从对话右上角「更多 → 任务与后台命令」弹窗区分子 Agent 和后台命令（有任务运行中时右上角显示状态绿点）。后台命令弹窗显示命令、工作目录、输出与退出码，可发送输入、结束输入和停止命令。stdio 操作不生成重复条目，后台命令不计模型费用。
 
 ## 日志
 

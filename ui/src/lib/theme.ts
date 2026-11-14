@@ -3,7 +3,7 @@
 import { create } from "zustand";
 
 export type ThemeMode = "light" | "dark" | "auto";
-const KEY = "agentic.theme";
+const KEY = "agent.theme";
 const ORDER: ThemeMode[] = ["auto", "light", "dark"];
 
 export const useTheme = create<{ mode: ThemeMode }>(() => ({ mode: "auto" }));

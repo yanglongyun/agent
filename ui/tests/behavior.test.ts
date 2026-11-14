@@ -40,6 +40,7 @@ import {
   usd,
 } from "../src/logs/format";
 import { copyText } from "../src/lib/clipboard";
+import { notePreview, noteTime, noteTitle } from "../src/notes/format";
 import { usageSummary, costLabel } from "../src/thread/metering";
 
 const sessionCost = {
@@ -1518,26 +1519,41 @@ test("应用面板：按地址判断当前应用，未知页面不属于任何�
   assert.equal(matchApp("/logs")?.id, "logs");
   assert.equal(matchApp("/logs/session/abc")?.id, "logs");
   assert.equal(matchApp("/logs/overview")?.id, "logs");
+  assert.equal(matchApp("/notes")?.id, "notes");
+  assert.equal(matchApp("/notes/abc")?.id, "notes");
   assert.equal(matchApp("/settings")?.id, "settings");
   // 前缀必须按路径段匹配，不能把 /logsx 当成日志。
   assert.equal(matchApp("/logsx"), null);
+  assert.equal(matchApp("/notesx"), null);
   assert.equal(matchApp("/nope"), null);
   assert.equal(appForPath("/nope").id, "chat");
   assert.deepEqual(
     apps.map((app) => app.id),
-    ["chat", "logs", "settings"],
+    ["chat", "notes", "logs", "settings"],
   );
 
   const chat = apps[0];
-  const logs = apps[1];
+  const logs = apps[2];
   assert.equal(launchPath(chat), "/");
   rememberLocation("/sessions/abc");
   rememberLocation("/logs/session/xyz?x=1");
+  rememberLocation("/notes/abc");
   rememberLocation("/nope");
   assert.equal(launchPath(chat), "/sessions/abc");
   assert.equal(launchPath(logs), "/logs/session/xyz?x=1");
+  assert.equal(launchPath(apps[1]), "/notes/abc");
   // 404 页不会覆盖任何应用的记忆。
-  assert.equal(launchPath(apps[2]), "/settings");
+  assert.equal(launchPath(apps[3]), "/settings");
+});
+
+test("记事本：标题为空时显示未命名，预览压平空白，时间只显示今天或日期", () => {
+  assert.equal(noteTitle({ title: "   " }), "未命名笔记");
+  assert.equal(noteTitle({ title: " 备忘 " }), "备忘");
+  assert.equal(notePreview(" 第一行\n\n第二行  "), "第一行 第二行");
+  assert.equal(notePreview("abcdefghij", 4), "abcd");
+  const now = new Date(2026, 10, 14, 15, 30).getTime();
+  assert.equal(noteTime(new Date(2026, 10, 14, 9, 5).getTime(), now), "09:05");
+  assert.equal(noteTime(new Date(2026, 10, 2, 9, 5).getTime(), now), "11月2日");
 });
 
 test("日志金额与 token 展示：未计费不显示成 $0，字段按固定顺序和中文名，未知字段保留原名", () => {

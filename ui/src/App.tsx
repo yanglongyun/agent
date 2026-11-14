@@ -23,19 +23,24 @@ export function App() {
 
   if (auth === "checking") {
     return (
-      <main className="connection-page">
-        <Mark size={38} />
-        <span>正在连接工作区…</span>
+      <main className="gate">
+        <div className="gate-status">
+          <Mark size={44} />
+          <span className="sheen">正在连接工作区…</span>
+        </div>
       </main>
     );
   }
   if (auth === "error") {
     return (
-      <main className="login">
-        <p>{error}</p>
-        <button className="btn" onClick={() => void checkAuth()}>
-          重新连接
-        </button>
+      <main className="gate">
+        <div className="gate-status">
+          <Mark size={44} />
+          <p>{error}</p>
+          <button className="btn btn-accent" onClick={() => void checkAuth()}>
+            重新连接
+          </button>
+        </div>
       </main>
     );
   }

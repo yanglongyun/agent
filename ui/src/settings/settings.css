@@ -1,0 +1,232 @@
+/* 设置应用：分区标题 + 卡片里的设置行，底部浮出的保存条。 */
+.settings-scroll {
+  scroll-behavior: smooth;
+}
+.settings-page {
+  max-width: 720px;
+  gap: 36px;
+  padding-top: 10px;
+  padding-bottom: 120px;
+}
+.settings-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  scroll-margin-top: 12px;
+}
+.settings-section-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 0 2px;
+}
+.settings-section-head h2 {
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+}
+.settings-section-head p {
+  margin-top: 3px;
+  color: var(--text-3);
+  font-size: 13px;
+  line-height: 1.6;
+}
+.settings-card {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.setting-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px 24px;
+  min-height: 56px;
+  padding: 12px 16px;
+}
+.setting-row + .setting-row,
+.model-row + .model-row {
+  border-top: 1px solid var(--edge);
+}
+.setting-row.stack {
+  flex-direction: column;
+  align-items: stretch;
+}
+.setting-text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.setting-label {
+  color: var(--text-1);
+  font-size: 13.5px;
+  font-weight: 550;
+}
+.setting-note {
+  color: var(--text-3);
+  font-size: 12.5px;
+  line-height: 1.55;
+}
+.setting-control {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+.setting-row.stack .setting-control {
+  display: block;
+}
+.setting-number {
+  width: 132px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  appearance: textfield;
+  -moz-appearance: textfield;
+}
+.setting-number::-webkit-inner-spin-button,
+.setting-number::-webkit-outer-spin-button {
+  margin: 0;
+  -webkit-appearance: none;
+}
+.setting-wide {
+  width: 240px;
+}
+.settings-prompt {
+  display: block;
+  min-height: 72px;
+  font: 12.5px/1.75 var(--font-mono);
+}
+.settings-kv {
+  padding: 4px 16px;
+}
+.save-bar {
+  position: absolute;
+  left: 50%;
+  bottom: 22px;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  max-width: calc(100% - 24px);
+  padding: 7px 7px 7px 16px;
+  border-radius: var(--r-3);
+  background: var(--surface-float);
+  box-shadow:
+    0 0 0 1px var(--edge),
+    var(--shadow-3);
+  transform: translateX(-50%);
+  animation: save-bar-in 0.3s var(--swift);
+}
+.save-bar > span {
+  margin-right: 14px;
+  color: var(--text-2);
+  font-size: 13px;
+  font-weight: 550;
+  white-space: nowrap;
+}
+@keyframes save-bar-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 16px);
+  }
+}
+
+/* ── 模型列表与编辑 ── */
+.model-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  padding: 10px 10px 10px 14px;
+}
+.model-symbol {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 34px;
+  height: 34px;
+  margin-right: 8px;
+  border-radius: var(--r-2);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.model-row-info {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+.model-row-info strong {
+  font-size: 13.5px;
+  font-weight: 600;
+}
+.model-row-info span {
+  color: var(--text-3);
+  font-size: 12px;
+}
+.model-remove:hover {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+.model-editor.sheet {
+  width: min(500px, calc(100vw - 32px));
+}
+.model-editor-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.model-editor-note {
+  margin-right: auto;
+  color: var(--text-4);
+  font-size: 12px;
+}
+.secret-field {
+  position: relative;
+}
+.secret-field .field-input {
+  padding-right: 42px;
+}
+.secret-field .icon-btn {
+  position: absolute;
+  right: 5px;
+  top: 50%;
+  transform: translateY(-50%);
+}
+@media (max-width: 760px) {
+  .settings-page {
+    gap: 28px;
+  }
+  .setting-row {
+    flex-wrap: wrap;
+  }
+  .setting-number {
+    width: 110px;
+  }
+  .setting-wide {
+    width: 100%;
+  }
+  .setting-row:has(.setting-wide),
+  .setting-row:has(.seg) {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .setting-row .seg {
+    display: flex;
+  }
+  .setting-row .seg-item {
+    flex: 1;
+  }
+  .model-editor.sheet {
+    width: 100vw;
+  }
+  .model-editor-note {
+    display: none;
+  }
+  .model-editor-form .seg-item {
+    padding: 0 6px;
+  }
+}

@@ -38,15 +38,18 @@
 
 ## UI 构建
 
-- 全局颜色、字体、表面和尺寸统一使用 `ui/src/styles/tokens.css` 的变量；图标使用 `ui/src/icons/Icon.tsx` 中的 Lucide 组件，不手绘同类图标。弹窗、菜单、提示与浮层使用 Radix，保持焦点管理、Escape、键盘操作和视口避让；新增页面同时检查浅色、深色与窄屏。
+- 全局颜色、字体、表面、圆角和尺寸统一使用 `ui/src/styles/tokens.css` 的变量：表面只有画布（`--canvas`，外壳）、舞台（`--surface`，内容）、浮层（`--surface-float`）三层；中性色用 `--tint-*`、`--edge*` 这组透明度变量，放在画布和舞台上都成立；圆角只用 `--r-1`…`--r-4`、`--r-full`；品牌渐变 `--brand` 只用于标志、发送按钮、用户气泡和强调数字。图标使用 `ui/src/icons/Icon.tsx` 中的 Lucide 组件，不手绘同类图标。弹窗、菜单、提示与浮层使用 Radix，保持焦点管理、Escape、键盘操作和视口避让；新增页面同时检查浅色、深色与窄屏。
+- 交互件统一用 `ui/src/styles/base.css` 里的类，各应用的样式文件只写自己的布局，不再各写一套：按钮 `.btn`（`btn-accent / btn-quiet / btn-ghost / btn-danger / btn-danger-quiet`，小号加 `sm`）与 `.icon-btn`，输入 `.field-input`、带标签的 `.field`、搜索 `.search-field`、开关 `.switch`，分段选择 `.seg` + `.seg-item`，状态 `.badge`（`is-accent / is-ok / is-warn / is-danger`，进行中加 `is-live`，任务状态用 `tasks/status.ts` 的 `statusTone`），数据标签 `.pill`，卡片 `.card`，等宽内容块 `.well`，键值表 `.kv`，空状态 `.empty`，提示文字 `.note`。弹窗统一用 `overlay/Sheet.tsx`（宽度加 `wide / xwide`，窄屏自动变成底部弹层），只读弹窗不放「关闭」页脚，页脚只留真正的操作。全部样式文件在 `ui/src/main.tsx` 里按顺序引入，组件里不单独 import CSS。
 - Ruixen 输入框的适配源码位于 `ui/src/components/ruixen/ChatInput.tsx`，仅负责展示和文件拖放，发送、附件校验和会话状态仍由 Composer 管理。保留源码归属与 `ui/public/licenses/` 中的许可。
 
 - 前端构建产物统一放在 `ui/dist`，由 `server/index.js` 直接托管。
 - 发布包保留 `ui/dist` 的路径，不向 server 目录复制静态文件。
 
-- 顶栏选择本次请求的 model_id，请求中的 compact_model_id 固定使用该对话模型（服务端仍接收并保存二者至用户消息 meta）。默认值优先级：本对话手动选择 > 本对话最近一条用户消息的 meta.model_id > 浏览器本地记住的最近使用模型（localStorage `agentic.model`，选择和发送时更新，新对话与刷新后沿用）> 列表第一项；已选模型被删除时顺延到下一级，不从历史费用推断模型。
-- 前端页面由 URL 路由决定：新对话 `/`、会话 `/sessions/:id`、日志 `/logs`（`/logs/overview`、`/logs/session|task/:id`）、设置 `/settings`、登录 `/login`。不再用 page 状态或本地保存的会话 ID 决定页面。新增页面路径时，同步更新 `server/index.js` 的页面路由白名单。
-- 界面是应用外壳：右上角的应用面板（`ui/src/shell/AppSwitcher.tsx`）列出并列的应用，注册表在 `ui/src/shell/apps.ts`；对话、日志、设置各自是一个应用，会话侧栏只属于对话应用，其余应用用 `AppBar` 作顶栏。新增应用先在注册表加一项，并记得路径前缀按路径段匹配。切换应用时回到该应用上次停留的页面（`rememberLocation`）。
+- 输入区底部工具条（`thread/ModelSelect.tsx`）选择本次请求的 model_id，请求中的 compact_model_id 固定使用该对话模型（服务端仍接收并保存二者至用户消息 meta）。默认值优先级：本对话手动选择 > 本对话最近一条用户消息的 meta.model_id > 浏览器本地记住的最近使用模型（localStorage `agent.model`，选择和发送时更新，新对话与刷新后沿用）> 列表第一项；已选模型被删除时顺延到下一级，不从历史费用推断模型。
+- 前端页面由 URL 路由决定：新对话 `/`、会话 `/sessions/:id`、日志 `/logs`（`/logs/overview`、`/logs/session|task/:id`）、记事本 `/notes`（`/notes/:id`）、设置 `/settings`、登录 `/login`。不再用 page 状态或本地保存的会话 ID 决定页面。新增页面路径时，同步更新 `server/index.js` 的页面路由白名单。
+- 界面是三栏外壳，所有页面共用一份（`ui/src/shell/Frame.tsx`，挂在登录保护层上，切换应用时不重建）：最左是应用导航 `Rail`（对话、记事本、日志在上，主题切换和设置在下），中间是当前应用的列表栏 pane（对话 `shell/ChatPane.tsx`、记事本 `notes/NotesPane.tsx`、日志 `logs/LogsPane.tsx`、设置 `settings/SettingsPane.tsx`，由 `Frame` 按当前应用选择），右边是舞台 `.stage`。应用注册表在 `ui/src/shell/apps.ts`，新增应用先在注册表加一项、在 `Frame` 里给它一个列表栏，并记得路径前缀按路径段匹配；切换应用时回到该应用上次停留的页面（`rememberLocation`）。列表栏和舞台的标题行统一用 `shell/heads.tsx` 的 `PaneHead`、`StageHead`，页面自己的操作作为 `StageHead` 的子节点放在右侧。列表栏里的行统一用 `.row`（当前项加 `on`）。宽屏列表栏可收起（`useShell().collapsed`，记在 localStorage）；窄屏（≤760px，`useNarrow`）导航和列表栏一起收进左侧抽屉，列表栏同一时刻只渲染一份（宽屏在 aside，窄屏在抽屉里），所以抽屉关闭后列表栏内的临时状态会重置。
+- 对话舞台：消息流里用户消息是右侧的品牌色气泡，助手回答是不带气泡的正文，没有头像；代码块由 `thread/format.tsx` 的渲染器加上语言名和「复制」按钮，点击在 `MessageStream` 里统一代理。空白对话时输入区居中、下方是起手式（`thread/Starters.tsx`），背后是 `.aurora` 光晕；登录页用同一个光晕。重命名、删除对话的确认弹窗只有 `thread/ThreadDialogs.tsx` 一份，列表栏的行菜单和舞台右上角的菜单共用。
+- 设置页的分区列表在 `settings/sections.tsx`，列表栏导航和页面排版都按它来，滚动时高亮当前分区；每个分区是 `Section` + 卡片里的 `SettingRow`。保存条只在有未保存的更改时从底部浮出（保存 / 放弃），没有常驻的页脚。
 - 对话界面不显示工具调用与 token，这些信息统一由日志应用提供：`/api/logs/summary|owners|records` 只读，汇总以 `metering` 表为唯一来源，token 按厂商原始字段原样求和，不归一、不估算；对话自身汇总只含 `metering.session_id`，子任务按 `task_id` 独立统计。
 - 置顶保存在 `sessions.pinned`（NULL 未置顶，非空为置顶组内升序序号）。列表在服务端按「置顶在前、其余按 updated_at」排序，前端 `compareThreads` 保持同一规则；置顶不修改 updated_at，分支不继承。单个会话用 PATCH `{ pinned }`，拖拽排序、拖入、拖出统一用 PUT `/api/sessions/pinned` 提交完整 ids，由事务整体生效，只向全局 SSE 推送状态变化的会话。拖拽手势集中在 `ui/src/shell/useThreadDrag.ts`：鼠标阈值触发，触屏长按触发，拖拽期间拦截 touchmove 的滚动，搜索时禁用。线上已有数据库的新增列由人工执行 `ALTER TABLE`，代码里不写迁移。
 - 回复结束后不重新查询消息或会话列表，压缩完成后不重新查询摘要。API 通过现有 SSE 事件附带保存确认和会话信息，前端直接更新；确认只在事务提交后发送，不修改标准 item。
@@ -59,11 +62,11 @@
 - agent.models 列出已添加的模型；agent.start 通过 model_id 可选独立连接，立即返回 task_id；status、wait、cancel 使用该 ID。子任务独立执行同一 Agent 循环，可分叉已提交的完整上下文；继承消息不复制 usage 和计量。
 - 每个会话最多同时执行 8 个子任务，最多嵌套 3 层。任务使用独立超时与取消控制器，主会话停止或服务关闭时清理任务。
 - 未显式收取的子任务结果，以带 meta.task_results 的标准 user 交接输入返回直接父 Agent；交接输入在模型请求前提交，与 tasks.delivered_at 在同一事务更新。界面隐藏交接输入，不改写用户正文，不伪造 call_id 或重复交付工具返回。
-- 子任务记录由 /api/tasks 读取，界面从顶栏右上角「更多」菜单进入任务列表并用弹窗展示详情，保留主对话、草稿和滚动位置；它们不出现在用户会话列表。任务完整消息、摘要、模型与费用独立保存。
+- 子任务记录由 /api/tasks 读取，界面从对话舞台右上角「更多」菜单进入任务列表并用弹窗展示详情，保留主对话、草稿和滚动位置；它们不出现在用户会话列表。任务完整消息、摘要、模型与费用独立保存。
 
 ## 后台命令
 
 - shell 仅在 background:true 时将命令交给 server/shell.js，立即返回 process_id；stdio 读写该命令的标准管道，不创建独立任务。前后台进程共用 server/shell-process.js。
 - shell_jobs 独立保存后台命令、输出末尾、退出码与状态，使用 session_id 归属会话、task_id 标记启动它的子 Agent。它不产生模型计费。
 - 后台命令跨主对话回复存活，无自动超时；停止或删除会话、服务关闭时清理整个进程组，子 Agent 的命令在所属任务结束时清理。每个会话最多 8 条活动命令。
-- /api/processes 提供列表、详情及 stdio 操作，界面和子 Agent 共用顶栏右上角「更多」菜单中的任务列表，详情在主对话内弹窗展示。
+- /api/processes 提供列表、详情及 stdio 操作，界面和子 Agent 共用对话舞台右上角「更多」菜单中的任务列表，详情在主对话内弹窗展示。

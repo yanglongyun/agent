@@ -7,7 +7,7 @@ import { spawn } from "node:child_process";
 import assert from "node:assert/strict";
 import { ROOT, version } from "../config.js";
 
-const root = await fs.mkdtemp(path.join(os.tmpdir(), "agentic install's smoke-"));
+const root = await fs.mkdtemp(path.join(os.tmpdir(), "agent install's smoke-"));
 const platform = process.platform === "win32" ? "windows" : process.platform;
 const arch = process.arch === "x64" ? "amd64" : process.arch;
 const artifact = `agent_${platform}_${arch}.${platform === "windows" ? "zip" : "tar.gz"}`;

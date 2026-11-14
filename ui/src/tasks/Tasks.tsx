@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { labels, active } from "./status";
+import { labels, active, statusTone } from "./status";
 import { ProcessDetail, type ShellJob } from "./Processes";
 import { Sheet } from "../overlay/Sheet";
 import { api } from "../lib/api";
@@ -11,7 +11,6 @@ import { Usage } from "../thread/Usage";
 import { AttachmentInfo } from "../thread/AttachmentInfo";
 import { costLabel, type OwnerCost } from "../thread/metering";
 import { updateSessionCost } from "../thread/store";
-import "./tasks.css";
 
 export interface Task extends OwnerCost {
   id: string;
@@ -126,56 +125,66 @@ export function TasksSheet({
 
   return (
     <>
-      <Sheet
-        title="任务与后台命令"
-        className="tasks-sheet"
-        onClose={onClose}
-        footer={
-          <button type="button" className="btn btn-quiet" onClick={onClose}>
-            关闭
-          </button>
-        }
-      >
-        <p className="tasks-sheet-sub">{subtitle}</p>
+      <Sheet title="任务与后台命令" className="wide" onClose={onClose}>
         {error && <p className="sheet-error">{error}</p>}
         {!tasks.length && !processes.length ? (
-          <div className="tasks-empty">
+          <div className="empty">
             <Icon name="terminal" size={24} />
-            <span>当前对话还没有委派子任务或后台命令</span>
+            <strong>还没有任务</strong>
+            <span>这个对话委派的子任务和后台命令会出现在这里。</span>
           </div>
         ) : (
-          <ul className="tasks-list">
-            {tasks.map((task) => (
-              <li key={task.id}>
-                <button
-                  type="button"
-                  className="task-open"
-                  onClick={() => setSelected({ id: task.id, kind: "agent" })}
-                >
-                  <span className="task-title">{task.task}</span>
-                  <span className={`task-status ${task.status}`}>{labels[task.status]}</span>
-                </button>
-                <small>
-                  子 Agent · {task.model} · {costLabel(task)}
-                </small>
-              </li>
-            ))}
-            {processes.map((record) => (
-              <li key={record.id}>
-                <button
-                  type="button"
-                  className="task-open"
-                  onClick={() => setSelected({ id: record.id, kind: "shell" })}
-                >
-                  <span className="task-title">{record.command}</span>
-                  <span className={`task-status ${record.status}`}>{labels[record.status]}</span>
-                </button>
-                <small>
-                  后台命令{record.exit_code !== null ? ` · 退出码 ${record.exit_code}` : ""}
-                </small>
-              </li>
-            ))}
-          </ul>
+          <>
+            <p className="sheet-note tasks-sub">{subtitle}</p>
+            <ul className="card tasks-list">
+              {tasks.map((task) => (
+                <li key={task.id}>
+                  <button
+                    type="button"
+                    className="task-open"
+                    onClick={() => setSelected({ id: task.id, kind: "agent" })}
+                  >
+                    <span className="task-icon">
+                      <Icon name="bot" size={16} />
+                    </span>
+                    <span className="task-main">
+                      <span className="task-title clip">{task.task}</span>
+                      <span className="task-sub clip">
+                        子 Agent · {task.model} · {costLabel(task)}
+                      </span>
+                    </span>
+                    <span className={`badge ${statusTone(task.status)}`}>
+                      {labels[task.status]}
+                    </span>
+                    <Icon name="chev" size={14} />
+                  </button>
+                </li>
+              ))}
+              {processes.map((record) => (
+                <li key={record.id}>
+                  <button
+                    type="button"
+                    className="task-open"
+                    onClick={() => setSelected({ id: record.id, kind: "shell" })}
+                  >
+                    <span className="task-icon">
+                      <Icon name="terminal" size={16} />
+                    </span>
+                    <span className="task-main">
+                      <span className="task-title mono clip">{record.command}</span>
+                      <span className="task-sub clip">
+                        后台命令{record.exit_code !== null ? ` · 退出码 ${record.exit_code}` : ""}
+                      </span>
+                    </span>
+                    <span className={`badge ${statusTone(record.status)}`}>
+                      {labels[record.status]}
+                    </span>
+                    <Icon name="chev" size={14} />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </>
         )}
       </Sheet>
       {selected?.kind === "agent" && (
@@ -319,51 +328,48 @@ function TaskDetail({
   const rows = buildRows(visible, compactions);
   return (
     <Sheet
-      title="子任务详情"
-      className="task-detail"
+      title="子任务"
+      className="xwide"
       onClose={onClose}
       footer={
-        <>
-          {task && <span className={`task-state ${task.status}`}>{labels[task.status]}</span>}
-          {task && active(task) && (
-            <button
-              type="button"
-              className="btn btn-quiet task-stop"
-              disabled={stopping || task.status === "cancelling"}
-              onClick={() => void stop()}
-            >
-              {stopping || task.status === "cancelling" ? "正在停止…" : "停止任务"}
-            </button>
-          )}
-          <button type="button" className="btn btn-quiet" onClick={onClose}>
-            关闭
+        task && active(task) ? (
+          <button
+            type="button"
+            className="btn btn-danger-quiet"
+            disabled={stopping || task.status === "cancelling"}
+            onClick={() => void stop()}
+          >
+            {stopping || task.status === "cancelling" ? "正在停止…" : "停止任务"}
           </button>
-        </>
+        ) : undefined
       }
     >
       {error && <p className="sheet-error">{error}</p>}
       {!task ? (
-        <p className="tasks-note">{error ? "" : "正在读取任务…"}</p>
+        <p className="note">{error ? "" : "正在读取任务…"}</p>
       ) : (
         <>
-          <p className="task-description">{task.task}</p>
-          <div className="task-facts">
-            <span>{task.model}</span>
-            <span>{task.request_count} 次请求</span>
-            <span>{costLabel(task)}</span>
+          <div className="task-brief">
+            <p className="task-description">{task.task}</p>
+            <div className="pill-row">
+              <span className={`badge ${statusTone(task.status)}`}>{labels[task.status]}</span>
+              <span className="pill mono">{task.model}</span>
+              <span className="pill">{task.request_count} 次请求</span>
+              <span className="pill">{costLabel(task)}</span>
+              {task.parent_task_id && (
+                <button
+                  type="button"
+                  className="text-link task-parent"
+                  onClick={() => onOpen(task.parent_task_id!)}
+                >
+                  查看父任务
+                </button>
+              )}
+            </div>
           </div>
-          {task.parent_task_id && (
-            <button
-              type="button"
-              className="task-parent"
-              onClick={() => onOpen(task.parent_task_id!)}
-            >
-              查看父任务
-            </button>
-          )}
           {task.error && <p className="sheet-error">{task.error}</p>}
           {messages.some((row) => row.meta?.inherited) && (
-            <label className="task-inherited">
+            <label className="check-row task-inherited">
               <input
                 type="checkbox"
                 checked={showInherited}
@@ -373,8 +379,12 @@ function TaskDetail({
             </label>
           )}
           {hasMore && (
-            <button className="btn btn-quiet" disabled={loadingOlder} onClick={() => void older()}>
-              查看更早的消息
+            <button
+              className="btn btn-quiet sm task-older"
+              disabled={loadingOlder}
+              onClick={() => void older()}
+            >
+              {loadingOlder ? "正在读取…" : "查看更早的消息"}
             </button>
           )}
           <div className="task-transcript">

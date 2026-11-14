@@ -23,6 +23,17 @@ class SafeRenderer extends marked.Renderer {
     return super.link(token);
   }
 
+  // 代码块带一行标题：语言名和复制按钮。点击由消息流统一代理，见 MessageStream。
+  code(token: Tokens.Code) {
+    const language = (token.lang || "")
+      .trim()
+      .split(/\s+/)[0]
+      .replace(/[^\w+#.-]/g, "")
+      .slice(0, 24);
+    const head = `<div class="code-head"><span>${language || "代码"}</span><button type="button" class="code-copy" data-copy-code>复制</button></div>`;
+    return `<div class="code-block">${head}${super.code(token)}</div>`;
+  }
+
   image(token: Tokens.Image) {
     if (isUnsafeUrl(token.href)) {
       return super.image({ ...token, href: "" });

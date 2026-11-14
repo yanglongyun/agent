@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Icon } from "../icons/Icon";
+import { Hint } from "../overlay/Hint";
 import { Sheet } from "../overlay/Sheet";
 import { toast } from "../overlay/toast";
 import {
@@ -8,6 +9,7 @@ import {
   type ModelProtocol,
   type ModelSettings,
 } from "../lib/models";
+import { Section } from "./sections";
 
 export function ModelsSettings({
   models,
@@ -19,14 +21,13 @@ export function ModelsSettings({
   const [editing, setEditing] = useState<ModelSettings | null>(null);
   const [removing, setRemoving] = useState<ModelSettings | null>(null);
   return (
-    <>
-      <div className="models-heading">
-        <div>
-          <h2 className="settings-section-title">模型</h2>
-          <p className="sheet-note">分别添加模型，在对话中随时切换。</p>
-        </div>
+    <Section
+      id="models"
+      title="模型"
+      description="分别添加模型连接，在对话输入框里随时切换。"
+      action={
         <button
-          className="btn btn-quiet"
+          className="btn btn-quiet sm"
           type="button"
           onClick={() =>
             setEditing({
@@ -41,50 +42,52 @@ export function ModelsSettings({
             })
           }
         >
-          <Icon name="plus" size={15} />
+          <Icon name="plus" size={14} />
           添加模型
         </button>
-      </div>
+      }
+    >
       {models.length ? (
-        <div className="models-list">
+        <div className="card settings-card">
           {models.map((model) => (
             <div className="model-row" key={model.id}>
               <span className="model-symbol">
-                <Icon name="cpu" size={18} />
+                <Icon name="cpu" size={17} />
               </span>
               <div className="model-row-info">
-                <div className="model-row-title">
-                  <strong>{model.name}</strong>
-                </div>
-                <p>
-                  <span>{model.model}</span>
-                  <span>{protocolNames[model.protocol]}</span>
-                </p>
+                <strong className="clip">{model.name}</strong>
+                <span className="clip">
+                  {model.model} · {protocolNames[model.protocol]}
+                </span>
               </div>
-              <button
-                type="button"
-                className="icon-btn"
-                aria-label={`编辑模型：${model.name}`}
-                onClick={() => setEditing(model)}
-              >
-                <Icon name="pen" size={16} />
-              </button>
-              <button
-                type="button"
-                className="icon-btn model-remove"
-                aria-label={`删除模型：${model.name}`}
-                onClick={() => setRemoving(model)}
-              >
-                <Icon name="trash" size={16} />
-              </button>
+              <Hint text="编辑">
+                <button
+                  type="button"
+                  className="icon-btn"
+                  aria-label={`编辑模型：${model.name}`}
+                  onClick={() => setEditing(model)}
+                >
+                  <Icon name="pen" size={15} />
+                </button>
+              </Hint>
+              <Hint text="删除">
+                <button
+                  type="button"
+                  className="icon-btn model-remove"
+                  aria-label={`删除模型：${model.name}`}
+                  onClick={() => setRemoving(model)}
+                >
+                  <Icon name="trash" size={15} />
+                </button>
+              </Hint>
             </div>
           ))}
         </div>
       ) : (
-        <div className="models-empty">
+        <div className="card empty">
           <Icon name="cpu" size={24} />
-          <span>还没有添加模型</span>
-          <p>添加模型后，即可开始对话。</p>
+          <strong>还没有添加模型</strong>
+          <span>添加模型后，即可开始对话。</span>
         </div>
       )}
       {editing && (
@@ -131,9 +134,15 @@ export function ModelsSettings({
           </p>
         </Sheet>
       )}
-    </>
+    </Section>
   );
 }
+
+const protocolShort: Record<ModelProtocol, string> = {
+  responses: "Responses",
+  "chat-completions": "Chat Completions",
+  "anthropic-messages": "Claude Messages",
+};
 
 function ModelEditor({
   model,
@@ -187,19 +196,19 @@ function ModelEditor({
       onClose={onClose}
       footer={
         <>
-          <span className="model-editor-note">完成后保存页面更改</span>
+          <span className="model-editor-note">保存页面更改后生效</span>
           <button type="button" className="btn btn-quiet" onClick={onClose}>
             取消
           </button>
           <button type="button" className="btn btn-accent" onClick={save}>
-            {exists ? "完成编辑" : "添加到列表"}
+            {exists ? "完成" : "添加"}
           </button>
         </>
       }
     >
       <div className="model-editor-form">
-        <label>
-          <span>名称</span>
+        <label className="field">
+          名称
           <input
             className="field-input"
             value={value.name}
@@ -208,24 +217,34 @@ function ModelEditor({
             onChange={(event) => setValue({ ...value, name: event.target.value })}
           />
         </label>
-        <label>
-          <span>协议</span>
-          <select
-            className="field-input"
-            value={value.protocol}
-            onChange={(event) =>
-              setValue({ ...value, protocol: event.target.value as ModelProtocol })
-            }
-          >
-            {Object.entries(protocolNames).map(([protocol, name]) => (
-              <option key={protocol} value={protocol}>
-                {name}
-              </option>
+        <div className="field">
+          协议
+          <div className="seg fill" role="group" aria-label="协议">
+            {(Object.keys(protocolNames) as ModelProtocol[]).map((protocol) => (
+              <button
+                key={protocol}
+                type="button"
+                className={`seg-item${value.protocol === protocol ? " selected" : ""}`}
+                aria-pressed={value.protocol === protocol}
+                onClick={() =>
+                  setValue({
+                    ...value,
+                    protocol,
+                    // 接口地址还是上一个协议的默认值时，跟着换成新协议的默认值
+                    url:
+                      value.url === modelEndpoints[value.protocol]
+                        ? modelEndpoints[protocol]
+                        : value.url,
+                  })
+                }
+              >
+                {protocolShort[protocol]}
+              </button>
             ))}
-          </select>
-        </label>
-        <label>
-          <span>接口地址</span>
+          </div>
+        </div>
+        <label className="field">
+          接口地址
           <input
             className="field-input mono"
             value={value.url}
@@ -233,8 +252,8 @@ function ModelEditor({
             onChange={(event) => setValue({ ...value, url: event.target.value })}
           />
         </label>
-        <label>
-          <span>模型 ID</span>
+        <label className="field">
+          模型 ID
           <input
             className="field-input mono"
             value={value.model}
@@ -242,23 +261,29 @@ function ModelEditor({
             onChange={(event) => setValue({ ...value, model: event.target.value })}
           />
         </label>
-        <label>
-          <span>API Key</span>
+        <label className="field">
+          API Key
           <div className="secret-field">
             <input
               className="field-input mono"
               type={showKey ? "text" : "password"}
               value={value.key}
+              autoComplete="off"
               placeholder={value.key_set ? "已设置，留空保持不变" : "请输入 API Key"}
               onChange={(event) => setValue({ ...value, key: event.target.value })}
             />
-            <button type="button" onClick={() => setShowKey(!showKey)}>
-              {showKey ? "隐藏" : "显示"}
+            <button
+              type="button"
+              className="icon-btn sm"
+              aria-label={showKey ? "隐藏 API Key" : "显示 API Key"}
+              onClick={() => setShowKey(!showKey)}
+            >
+              <Icon name={showKey ? "eyeOff" : "eye"} size={15} />
             </button>
           </div>
         </label>
-        <label>
-          <span>上下文窗口（token）</span>
+        <label className="field">
+          上下文窗口（token）
           <input
             className="field-input"
             type="number"

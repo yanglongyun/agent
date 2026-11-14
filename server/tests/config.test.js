@@ -9,7 +9,7 @@ import { configured } from "./config-fixture.js";
 const api = { token: "test-access-token-123456", listen: "127.0.0.1:0" };
 
 test("当前配置在文件读取边界校验，不补缺失字段", async (t) => {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), "agentic-config-"));
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "agent-config-"));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
   const locations = paths({ AGENT_HOME: root });
   const initial = loadConfig(locations, {});

@@ -11,7 +11,7 @@ import { message } from "../ai/index.js";
 import modelServer from "./model.js";
 
 test("CLI ask 使用同一内核保存会话、消息和 usage", async (t) => {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), "agentic-cli-"));
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "agent-cli-"));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
   const locations = paths({ AGENT_HOME: root });
   const usage = { input_tokens: 5, output_tokens: 2, total_tokens: 7 };

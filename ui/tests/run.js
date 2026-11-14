@@ -9,7 +9,7 @@ checkStyle("../server");
 checkStyle("src");
 checkStyle("tests");
 
-const directory = await fs.mkdtemp(path.join(os.tmpdir(), "agentic-ui-tests-"));
+const directory = await fs.mkdtemp(path.join(os.tmpdir(), "agent-ui-tests-"));
 try {
   const output = path.join(directory, "behavior.test.mjs");
   await build({

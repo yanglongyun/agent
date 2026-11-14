@@ -54,10 +54,10 @@ export function RecordItem({ entry }: { entry: Entry }) {
   return (
     <article className={`log-record tone-${described.tone}`}>
       <div className="log-record-head">
-        <span className="log-badge">{described.label}</span>
+        <span className="log-kind">{described.label}</span>
         {described.title && <span className="log-title mono">{described.title}</span>}
         {described.ok !== null && (
-          <span className={`log-status ${described.ok ? "ok" : "fail"}`}>
+          <span className={`badge ${described.ok ? "is-ok" : "is-danger"}`}>
             {described.ok ? "成功" : "失败"}
           </span>
         )}
@@ -72,9 +72,9 @@ export function RecordItem({ entry }: { entry: Entry }) {
       )}
       {(described.images > 0 || described.files.length > 0) && (
         <div className="pill-row">
-          {described.images > 0 && <span className="detail-pill">图片 × {described.images}</span>}
+          {described.images > 0 && <span className="pill">图片 × {described.images}</span>}
           {described.files.map((name) => (
-            <span key={name} className="detail-pill">
+            <span key={name} className="pill">
               {name}
             </span>
           ))}
@@ -82,13 +82,13 @@ export function RecordItem({ entry }: { entry: Entry }) {
       )}
       {(chips.length > 0 || costChip) && (
         <div className="pill-row log-usage">
-          {metering?.model && <span className="detail-pill mono">{metering.model}</span>}
+          {metering?.model && <span className="pill mono">{metering.model}</span>}
           {chips.map((chip) => (
-            <span key={chip} className="detail-pill">
+            <span key={chip} className="pill">
               {chip}
             </span>
           ))}
-          {costChip && <span className="detail-pill is-accent">{costChip}</span>}
+          {costChip && <span className="pill is-accent">{costChip}</span>}
         </div>
       )}
       <div className="log-actions">
@@ -101,7 +101,7 @@ export function RecordItem({ entry }: { entry: Entry }) {
           {showRaw ? "隐藏原始数据" : "原始数据"}
         </button>
       </div>
-      {showRaw && <pre className="log-raw">{JSON.stringify(raw, null, 2)}</pre>}
+      {showRaw && <pre className="well log-raw">{JSON.stringify(raw, null, 2)}</pre>}
     </article>
   );
 }

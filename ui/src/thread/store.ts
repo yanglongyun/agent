@@ -170,7 +170,7 @@ function reset() {
   }));
 }
 // 最近使用的模型是跨对话、跨刷新的个人偏好，新对话默认沿用它。
-const LAST_MODEL_KEY = "agentic.model";
+const LAST_MODEL_KEY = "agent.model";
 function readLastModelId() {
   try {
     return localStorage.getItem(LAST_MODEL_KEY) || "";

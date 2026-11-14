@@ -36,11 +36,14 @@ export function Sheet({
           className={`sheet ${className}${footer ? " sheet-with-footer" : ""}`}
           aria-describedby={undefined}
           onOpenAutoFocus={(event) => {
+            // 有输入框就聚焦输入框；否则聚焦弹窗本身，不让关闭按钮一打开就带着焦点环。
+            event.preventDefault();
             const field = content.current?.querySelector<HTMLInputElement>("[data-autofocus]");
             if (field) {
-              event.preventDefault();
               field.focus();
               field.select();
+            } else {
+              content.current?.focus();
             }
           }}
           onCloseAutoFocus={(event) => {
@@ -52,7 +55,7 @@ export function Sheet({
         >
           <header className="sheet-head">
             <Dialog.Title className="sheet-title">{title}</Dialog.Title>
-            <Dialog.Close className="icon-btn sheet-close" aria-label="关闭" title="关闭">
+            <Dialog.Close className="icon-btn" aria-label="关闭">
               <Icon name="close" size={18} />
             </Dialog.Close>
           </header>

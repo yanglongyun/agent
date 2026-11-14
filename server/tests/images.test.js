@@ -7,7 +7,7 @@ import { saveImage } from "../images.js";
 import prepareImages from "../ai/images.js";
 
 test("图片转换只影响请求，保留原块和远程地址；本地文件缺失或越界时终止", async (t) => {
-  const directory = await fs.mkdtemp(path.join(os.tmpdir(), "agentic-images-"));
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), "agent-images-"));
   t.after(() => fs.rm(directory, { recursive: true, force: true }));
   const url = await saveImage(directory, Buffer.from("image bytes"), ".png");
   const messages = [

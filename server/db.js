@@ -55,6 +55,14 @@ CREATE TABLE IF NOT EXISTS shell_jobs (
 );
 CREATE INDEX IF NOT EXISTS idx_shell_jobs_session ON shell_jobs(session_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_shell_jobs_task ON shell_jobs(task_id);
+CREATE TABLE IF NOT EXISTS notes (
+  id TEXT PRIMARY KEY,
+  title TEXT,
+  body TEXT,
+  created_at INTEGER,
+  updated_at INTEGER
+);
+CREATE INDEX IF NOT EXISTS idx_notes_updated ON notes(updated_at);
 CREATE TABLE IF NOT EXISTS messages (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   session_id TEXT,

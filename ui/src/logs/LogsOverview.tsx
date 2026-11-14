@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
+import { Icon } from "../icons/Icon";
 import { api } from "../lib/api";
+import { StageHead } from "../shell/heads";
 import { costText, rangeSince, tokenChips, type Range } from "./format";
 import { CostStat, Stat } from "./Stat";
 import type { Overview, Summary } from "./types";
@@ -24,7 +26,7 @@ function Pills({ tokens }: { tokens: Record<string, number> }) {
   return (
     <span className="pill-row">
       {chips.map((chip) => (
-        <span key={chip} className="detail-pill">
+        <span key={chip} className="pill">
           {chip}
         </span>
       ))}
@@ -34,15 +36,13 @@ function Pills({ tokens }: { tokens: Record<string, number> }) {
 
 function SourceRow({ label, summary }: { label: string; summary: Summary }) {
   return (
-    <div className="logs-row-card">
-      <div className="logs-row-line">
+    <div className="usage-row">
+      <div className="usage-row-head">
         <b>{label}</b>
-        <span>{costText(summary.cost, summary.requests)}</span>
+        <span className="usage-row-count">{summary.requests.toLocaleString("en-US")} 次请求</span>
+        <span className="usage-row-cost">{costText(summary.cost, summary.requests)}</span>
       </div>
-      <div className="logs-row-line sub">
-        <span>{summary.requests} 次请求</span>
-        <Pills tokens={summary.tokens} />
-      </div>
+      <Pills tokens={summary.tokens} />
     </div>
   );
 }
@@ -76,64 +76,88 @@ export function LogsOverview() {
   }, [range]);
 
   return (
-    <div className="logs-detail">
-      <div className="detail-head">
-        <h2 className="detail-title">用量总览</h2>
-        <p className="detail-meta">全部对话、子任务和上下文压缩的模型请求。</p>
-        <div className="chip-group" role="group" aria-label="时间范围">
-          {ranges.map((item) => (
-            <button
-              key={item.value}
-              type="button"
-              className={`filter-chip${range === item.value ? " selected" : ""}`}
-              aria-pressed={range === item.value}
-              onClick={() => setRange(item.value)}
-            >
-              {item.label}
-            </button>
-          ))}
-        </div>
-      </div>
-      {error && <p className="logs-note is-error">{error}</p>}
-      {!data && !error && <p className="logs-note">正在读取…</p>}
-      {data && data.requests === 0 && <p className="logs-note">这个时间范围内没有用量记录</p>}
-      {data && data.requests > 0 && (
-        <div className="detail-body">
-          <div className="stat-grid">
-            <CostStat label="预估费用" cost={data.cost} requests={data.requests} />
-            <Stat label="请求数" value={data.requests.toLocaleString("en-US")} />
-            <Stat label="使用的模型" value={String(data.models.length)} />
+    <section className="stage">
+      <StageHead title="用量总览" />
+      <main className="stage-scroll">
+        <div className="page">
+          <div className="page-intro">
+            <p>全部对话、子任务和上下文压缩的模型请求。</p>
+            <div className="seg" role="group" aria-label="时间范围">
+              {ranges.map((item) => (
+                <button
+                  key={item.value}
+                  type="button"
+                  className={`seg-item${range === item.value ? " selected" : ""}`}
+                  aria-pressed={range === item.value}
+                  onClick={() => setRange(item.value)}
+                >
+                  {item.label}
+                </button>
+              ))}
+            </div>
           </div>
-          <section className="logs-section">
-            <h3>Token</h3>
-            <Pills tokens={data.tokens} />
-            <p className="logs-note-left">
-              不同厂商的 token 字段口径不同，按原始字段分别累计，不合并。
-            </p>
-          </section>
-          <section className="logs-section">
-            <h3>按来源</h3>
-            {sources.map((source) => (
-              <SourceRow key={source.key} label={source.label} summary={data.sources[source.key]} />
-            ))}
-          </section>
-          <section className="logs-section">
-            <h3>按模型</h3>
-            {data.models.map((model) => (
-              <div key={model.model} className="logs-row-card">
-                <div className="logs-row-line">
-                  <b className="mono">{model.model}</b>
-                  <span>{costText(model.cost, model.requests)}</span>
-                </div>
-                <div className="logs-row-line sub">
-                  <span>{model.requests} 次请求</span>
-                  <Pills tokens={model.tokens} />
-                </div>
+          {error && <p className="note is-error">{error}</p>}
+          {!data && !error && <p className="note">正在读取…</p>}
+          {data && data.requests === 0 && (
+            <div className="empty">
+              <Icon name="chart" size={24} />
+              <strong>还没有用量</strong>
+              <span>这个时间范围内没有模型请求。</span>
+            </div>
+          )}
+          {data && data.requests > 0 && (
+            <>
+              <div className="stat-grid">
+                <CostStat label="预估费用" cost={data.cost} requests={data.requests} accent />
+                <Stat label="请求数" value={data.requests.toLocaleString("en-US")} />
+                <Stat label="使用的模型" value={String(data.models.length)} />
               </div>
-            ))}
-          </section>
+              <section className="logs-section">
+                <h3>Token</h3>
+                <div className="card usage-card">
+                  <div className="usage-row">
+                    <Pills tokens={data.tokens} />
+                    <p className="field-note">
+                      不同厂商的 token 字段口径不同，按原始字段分别累计，不合并。
+                    </p>
+                  </div>
+                </div>
+              </section>
+              <section className="logs-section">
+                <h3>按来源</h3>
+                <div className="card usage-card">
+                  {sources.map((source) => (
+                    <SourceRow
+                      key={source.key}
+                      label={source.label}
+                      summary={data.sources[source.key]}
+                    />
+                  ))}
+                </div>
+              </section>
+              <section className="logs-section">
+                <h3>按模型</h3>
+                <div className="card usage-card">
+                  {data.models.map((model) => (
+                    <div key={model.model} className="usage-row">
+                      <div className="usage-row-head">
+                        <b className="mono">{model.model}</b>
+                        <span className="usage-row-count">
+                          {model.requests.toLocaleString("en-US")} 次请求
+                        </span>
+                        <span className="usage-row-cost">
+                          {costText(model.cost, model.requests)}
+                        </span>
+                      </div>
+                      <Pills tokens={model.tokens} />
+                    </div>
+                  ))}
+                </div>
+              </section>
+            </>
+          )}
         </div>
-      )}
-    </div>
+      </main>
+    </section>
   );
 }

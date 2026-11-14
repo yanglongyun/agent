@@ -92,7 +92,19 @@ export function contextTokens(usage, protocol) {
   return usage.input_tokens + usage.output_tokens + writes + reads;
 }
 
-export default function measure(usage, { protocol, model, url, serviceTier }) {
+// 时间型规则按请求完成时刻的 UTC 工作日时段区分高峰；其他规则返回 null。
+function periodOf(rule, at) {
+  if (!rule.peak) {
+    return null;
+  }
+  const time = new Date(at);
+  const weekday = rule.peak.weekdays.includes(time.getUTCDay());
+  const hour = time.getUTCHours();
+  const inHours = rule.peak.hours.some(([from, to]) => hour >= from && hour < to);
+  return weekday && inHours ? "peak" : "offpeak";
+}
+
+export default function measure(usage, { protocol, model, url, serviceTier, at = Date.now() }) {
   if (!usage) {
     return null;
   }
@@ -166,7 +178,14 @@ export default function measure(usage, { protocol, model, url, serviceTier }) {
   if (![ordinary, reads, writes, longWrites, output, input].every(count)) {
     return { ...measurement, status: "invalid_usage" };
   }
-  const rates = rule.rates.find((entry) => entry.through === null || input <= entry.through);
+  const period = periodOf(rule, at);
+  const rates = rule.rates.find(
+    (entry) =>
+      (entry.period ?? null) === period && (entry.through === null || input <= entry.through),
+  );
+  if (!rates) {
+    return measurement;
+  }
   const units = [
     { kind: "input", tokens: ordinary, rate: rates.input },
     { kind: "output", tokens: output, rate: rates.output },
@@ -190,8 +209,9 @@ export default function measure(usage, { protocol, model, url, serviceTier }) {
       currency: rule.currency,
       basis: "list_price_estimate",
       reference: rule.reference,
-      rule_date: "2026-11-10",
+      rule_date: rule.checked,
       tier: serviceTier || "standard",
+      period,
       units,
     },
   };

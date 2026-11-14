@@ -9,13 +9,13 @@ export default function authorize(req, context) {
     return;
   }
 
-  const cookie = /(?:^|;\s*)agentic_session=([^;]+)/.exec(req.headers.cookie || "")?.[1] || "";
+  const cookie = /(?:^|;\s*)agent_session=([^;]+)/.exec(req.headers.cookie || "")?.[1] || "";
   const [expiry, signature] = cookie.split(".");
   if (!/^\d+$/.test(expiry) || Number(expiry) < Date.now() / 1000) {
     fail(401, "请先登录");
   }
   const key = createHash("sha256")
-    .update("agentic-cookie:" + token)
+    .update("agent-cookie:" + token)
     .digest();
   const expectedSignature = Buffer.from(createHmac("sha256", key).update(expiry).digest("hex"));
   const providedSignature = Buffer.from(signature || "");

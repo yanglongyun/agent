@@ -13,7 +13,7 @@ import { message } from "../ai/index.js";
 import modelServer from "./model.js";
 
 async function workspace(t) {
-  const workdir = await fs.mkdtemp(path.join(os.tmpdir(), "agentic-tools-"));
+  const workdir = await fs.mkdtemp(path.join(os.tmpdir(), "agent-tools-"));
   t.after(() => fs.rm(workdir, { recursive: true, force: true }));
   return {
     ...defaults(),

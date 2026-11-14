@@ -1,96 +1,118 @@
-/* 整个应用共用的表面、文字、间距和交互变量。 */
+/* 整个应用共用的设计变量。层次只有三层：画布（外壳）< 舞台（内容）< 浮层（菜单、弹窗）。 */
 :root {
   color-scheme: light;
+
+  /* 表面 */
+  --canvas: #f1f2f6;
   --surface: #ffffff;
-  --surface-side: #ffffff;
   --surface-float: #ffffff;
-  --surface-code: #f5f6f7;
-  --text-1: #050505;
-  --text-2: #3a3b3c;
-  --text-3: #65676b;
-  --text-4: #8a8d91;
-  --text-5: #bcc0c4;
-  --accent: #0084ff;
-  --accent-hover: #0073e6;
-  --accent-deep: #0064d1;
-  --accent-soft: #e7f3ff;
-  --accent-ring: rgba(0, 132, 255, 0.22);
+  --surface-sunken: #f6f7fa;
+
+  /* 文字：1 正文，2 次要正文，3 说明，4 占位，5 禁用 */
+  --text-1: #14161c;
+  --text-2: #3b404c;
+  --text-3: #686e7c;
+  --text-4: #9499a6;
+  --text-5: #c3c7d0;
+
+  /* 中性色用透明度表达，放在画布和舞台上都成立 */
+  --tint-1: rgba(22, 27, 48, 0.045);
+  --tint-2: rgba(22, 27, 48, 0.075);
+  --tint-3: rgba(22, 27, 48, 0.12);
+  --edge: rgba(22, 27, 48, 0.08);
+  --edge-strong: rgba(22, 27, 48, 0.16);
+
+  /* 强调色与品牌渐变 */
+  --accent: #4f5df5;
+  --accent-hover: #414fe6;
+  --accent-text: #3d49dc;
+  --accent-soft: rgba(79, 93, 245, 0.1);
+  --accent-ring: rgba(79, 93, 245, 0.26);
   --on-accent: #ffffff;
-  --link: #0866ff;
-  --warn: #b36b00;
-  --warn-soft: #fff4de;
-  --danger: #e41e3f;
-  --danger-soft: #ffecef;
-  --ok: #31a24c;
-  --ok-soft: #e6f6ea;
-  --fill: #f0f2f5;
-  --fill-2: #e4e6eb;
-  --edge: #e4e6eb;
-  --edge-soft: #ebedf0;
-  --edge-strong: #ced0d4;
-  --hover: #f2f3f5;
-  --row-hover: #f2f3f5;
-  --row-on: #ebf5ff;
-  --veil: rgba(0, 0, 0, 0.4);
-  --sheen-base: #b0b3b8;
-  --sheen-peak: #050505;
-  --bubble-me: linear-gradient(180deg, #1a9fff 0%, #0a7cff 100%);
-  --bubble-me-text: #ffffff;
-  --bubble-them: #f0f0f0;
-  --glass: rgba(255, 255, 255, 0.82);
-  --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.06);
-  --shadow-2: 0 2px 8px rgba(0, 0, 0, 0.06), 0 8px 24px rgba(0, 0, 0, 0.06);
-  --shadow-3: 0 12px 40px rgba(0, 0, 0, 0.18), 0 2px 8px rgba(0, 0, 0, 0.06);
-  --radius-m: 12px;
-  --radius-l: 18px;
-  --content-width: 820px;
-  --sidebar-width: 320px;
+  --brand: linear-gradient(135deg, #4c82ff 0%, #6a5cf6 55%, #a35cf2 100%);
+  --brand-a: #4c82ff;
+  --brand-b: #6a5cf6;
+  --brand-c: #b05cf0;
+  --link: #3d49dc;
+
+  /* 状态 */
+  --ok: #14924f;
+  --ok-soft: rgba(20, 146, 79, 0.11);
+  --warn: #a9670b;
+  --warn-soft: rgba(214, 139, 18, 0.14);
+  --danger: #dc3d43;
+  --danger-hover: #c8343a;
+  --danger-soft: rgba(220, 61, 67, 0.09);
+
+  --veil: rgba(16, 18, 28, 0.38);
+  --shadow-1: 0 1px 2px rgba(18, 22, 42, 0.06);
+  --shadow-2: 0 1px 2px rgba(18, 22, 42, 0.04), 0 8px 24px rgba(18, 22, 42, 0.08);
+  --shadow-3: 0 2px 8px rgba(18, 22, 42, 0.06), 0 24px 60px rgba(18, 22, 42, 0.18);
+  --shadow-stage: 0 0 0 1px var(--edge), 0 1px 3px rgba(18, 22, 42, 0.04);
+
+  /* 圆角只有这几档：控件 / 行与输入 / 卡片 / 弹窗与输入框 / 胶囊 */
+  --r-1: 7px;
+  --r-2: 10px;
+  --r-3: 14px;
+  --r-4: 20px;
+  --r-full: 999px;
+
+  /* 尺寸 */
+  --rail-width: 60px;
+  --pane-width: 296px;
+  --header-height: 56px;
+  --content-width: 768px;
+  --gutter: 24px;
+
   --font:
-    -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", "Segoe UI", "PingFang SC",
+    "Inter", -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", "PingFang SC",
     "Microsoft YaHei UI", sans-serif;
-  --font-mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  --font-mono: "SF Mono", "SFMono-Regular", "JetBrains Mono", Menlo, Consolas, monospace;
   --swift: cubic-bezier(0.16, 1, 0.3, 1);
 }
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --surface: #18191a;
-  --surface-side: #18191a;
-  --surface-float: #242526;
-  --surface-code: #242526;
-  --text-1: #e4e6eb;
-  --text-2: #cfd1d6;
-  --text-3: #b0b3b8;
-  --text-4: #8a8d91;
-  --text-5: #5c5f63;
-  --accent: #2d88ff;
-  --accent-hover: #4599ff;
-  --accent-deep: #6ab0ff;
-  --accent-soft: #263951;
-  --accent-ring: rgba(45, 136, 255, 0.3);
+
+  --canvas: #0c0d11;
+  --surface: #15171c;
+  --surface-float: #1d2027;
+  --surface-sunken: #101216;
+
+  --text-1: #eceef3;
+  --text-2: #c5c9d3;
+  --text-3: #8f95a3;
+  --text-4: #686e7b;
+  --text-5: #454a55;
+
+  --tint-1: rgba(226, 232, 255, 0.055);
+  --tint-2: rgba(226, 232, 255, 0.09);
+  --tint-3: rgba(226, 232, 255, 0.15);
+  --edge: rgba(226, 232, 255, 0.08);
+  --edge-strong: rgba(226, 232, 255, 0.17);
+
+  --accent: #7c88ff;
+  --accent-hover: #8f9aff;
+  --accent-text: #a3acff;
+  --accent-soft: rgba(124, 136, 255, 0.16);
+  --accent-ring: rgba(124, 136, 255, 0.36);
   --on-accent: #ffffff;
-  --link: #4599ff;
-  --warn: #e5b45a;
-  --warn-soft: #3a2f1a;
-  --danger: #ff6b81;
-  --danger-soft: #3d2227;
-  --ok: #45bd62;
-  --ok-soft: #1f3526;
-  --fill: #3a3b3c;
-  --fill-2: #4e4f50;
-  --edge: #3e4042;
-  --edge-soft: #2f3031;
-  --edge-strong: #565859;
-  --hover: #3a3b3c;
-  --row-hover: #2d2e2f;
-  --row-on: #263951;
-  --veil: rgba(0, 0, 0, 0.62);
-  --sheen-base: #6a6d70;
-  --sheen-peak: #e4e6eb;
-  --bubble-me: linear-gradient(180deg, #3a95ff 0%, #1a7cf5 100%);
-  --bubble-me-text: #ffffff;
-  --bubble-them: #303030;
-  --glass: rgba(24, 25, 26, 0.82);
-  --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.3);
-  --shadow-2: 0 6px 24px rgba(0, 0, 0, 0.35);
-  --shadow-3: 0 16px 48px rgba(0, 0, 0, 0.5);
+  --brand: linear-gradient(135deg, #5a8cff 0%, #7868fa 55%, #b06cf5 100%);
+  --brand-a: #5a8cff;
+  --brand-b: #7868fa;
+  --brand-c: #c070f5;
+  --link: #a3acff;
+
+  --ok: #4cc38a;
+  --ok-soft: rgba(76, 195, 138, 0.15);
+  --warn: #e2b05a;
+  --warn-soft: rgba(226, 176, 90, 0.15);
+  --danger: #ff7a7f;
+  --danger-hover: #ff9094;
+  --danger-soft: rgba(255, 122, 127, 0.13);
+
+  --veil: rgba(0, 0, 0, 0.6);
+  --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.36);
+  --shadow-2: 0 1px 2px rgba(0, 0, 0, 0.3), 0 10px 30px rgba(0, 0, 0, 0.36);
+  --shadow-3: 0 2px 8px rgba(0, 0, 0, 0.3), 0 26px 70px rgba(0, 0, 0, 0.56);
+  --shadow-stage: 0 0 0 1px var(--edge);
 }

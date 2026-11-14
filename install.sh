@@ -4,10 +4,10 @@ REPO="${AGENT_REPO:-yanglongyun/AGENT}"
 VERSION="${AGENT_VERSION:-latest}"
 if [ "$(id -u)" = 0 ]; then
   default_bin_dir=/usr/local/bin
-  default_install_dir=/usr/local/lib/agentic
+  default_install_dir=/usr/local/lib/agent
 else
   default_bin_dir="$HOME/.local/bin"
-  default_install_dir="$HOME/.local/share/agentic-install"
+  default_install_dir="$HOME/.local/share/agent-install"
 fi
 BIN_DIR="${AGENT_BIN_DIR:-$default_bin_dir}"
 INSTALL_DIR="${AGENT_INSTALL_DIR:-$default_install_dir}"
@@ -71,19 +71,19 @@ if [ "$actual" != "$expected" ]; then
   exit 1
 fi
 tar -xzf "$tmp/$archive" -C "$tmp"
-if [ ! -f "$tmp/agentic/server/scripts/cli.js" ] || [ ! -x "$tmp/agentic/runtime/bin/node" ]; then
+if [ ! -f "$tmp/agent/server/scripts/cli.js" ] || [ ! -x "$tmp/agent/runtime/bin/node" ]; then
   echo "发布包缺少 server/scripts/cli.js 或 Node.js" >&2
   exit 1
 fi
 # Verify the bundled runtime actually runs on this server before changing the launcher.
-"$tmp/agentic/runtime/bin/node" "$tmp/agentic/server/scripts/cli.js" version
+"$tmp/agent/runtime/bin/node" "$tmp/agent/server/scripts/cli.js" version
 mkdir -p "$INSTALL_DIR/releases" "$BIN_DIR"
 INSTALL_DIR=$(CDPATH= cd -- "$INSTALL_DIR" && pwd)
 BIN_DIR=$(CDPATH= cd -- "$BIN_DIR" && pwd)
 release_dir="$INSTALL_DIR/releases/$actual"
 if [ ! -d "$release_dir" ]; then
   stage=$(mktemp -d "$INSTALL_DIR/releases/.install-XXXXXX")
-  cp -R "$tmp/agentic/." "$stage/"
+  cp -R "$tmp/agent/." "$stage/"
   mv "$stage" "$release_dir"
 fi
 # A small wrapper points at an immutable release; running old processes keep their files.

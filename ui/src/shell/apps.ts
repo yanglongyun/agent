@@ -2,7 +2,7 @@
 import type { IconName } from "../icons/Icon";
 
 export interface AppInfo {
-  id: "chat" | "logs" | "settings";
+  id: "chat" | "notes" | "logs" | "settings";
   name: string;
   icon: IconName;
   path: string;
@@ -12,6 +12,7 @@ export interface AppInfo {
 
 export const apps: AppInfo[] = [
   { id: "chat", name: "对话", icon: "messages", path: "/", prefixes: ["/sessions"] },
+  { id: "notes", name: "记事本", icon: "notes", path: "/notes", prefixes: ["/notes"] },
   { id: "logs", name: "日志", icon: "logs", path: "/logs", prefixes: ["/logs"] },
   { id: "settings", name: "设置", icon: "settings", path: "/settings", prefixes: ["/settings"] },
 ];

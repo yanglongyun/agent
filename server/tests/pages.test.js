@@ -31,6 +31,8 @@ test("页面路由返回同一份界面入口，其余路径保持各自的错�
     "/logs/overview",
     "/logs/session/abc",
     "/logs/task/abc",
+    "/notes",
+    "/notes/abc",
   ]) {
     const response = await fetch(origin + route);
     assert.equal(response.status, 200, route);
@@ -43,6 +45,7 @@ test("页面路由返回同一份界面入口，其余路径保持各自的错�
     "/logs/other/abc",
     "/logs/overview/abc",
     "/logs/session/abc/extra",
+    "/notes/abc/extra",
     "/log",
   ]) {
     assert.equal(await status(route), 404, route);

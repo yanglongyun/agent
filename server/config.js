@@ -19,7 +19,7 @@ export function paths(env = process.env, platform = process.platform, home = os.
   } else {
     base = env.XDG_CONFIG_HOME || path.join(home, ".config");
   }
-  const root = path.resolve(env.AGENT_HOME || path.join(base, "agentic"));
+  const root = path.resolve(env.AGENT_HOME || path.join(base, "agent"));
   return {
     root,
     config: path.join(root, "config.json"),

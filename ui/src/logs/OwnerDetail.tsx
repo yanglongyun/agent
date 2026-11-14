@@ -2,7 +2,8 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router";
 import { Icon } from "../icons/Icon";
 import { api } from "../lib/api";
-import { labels } from "../tasks/status";
+import { StageHead } from "../shell/heads";
+import { labels, statusTone } from "../tasks/status";
 import { dayLabel } from "../thread/format";
 import type { RawMessage } from "../thread/thread";
 import { costText, fullTime, ownerTitle, tokenChips, typeOptions } from "./format";
@@ -124,149 +125,191 @@ function DetailBody({ kind, id }: { kind: string; id: string }) {
   }, [records, page]);
 
   if (!valid) {
-    return <p className="logs-note is-error">未知的类型</p>;
+    return (
+      <section className="stage">
+        <StageHead title="日志" />
+        <p className="note is-error">未知的类型</p>
+      </section>
+    );
   }
   const owner = page?.owner;
   const summary = page?.summary;
   const filtered = type !== "all" || search !== "";
+  const chips = summary ? tokenChips(summary.tokens) : [];
   let lastDay = "";
+  let title = "正在读取…";
+  if (owner) {
+    title = ownerTitle(owner);
+  } else if (error) {
+    title = "无法读取";
+  }
 
   return (
-    <div className="logs-detail">
-      {owner && summary ? (
-        <div className="detail-head">
-          <div className="detail-title-row">
-            <h2 className="detail-title">{ownerTitle(owner)}</h2>
-            <span className="kind-badge">{owner.kind === "session" ? "对话" : "子任务"}</span>
-            {owner.status && (
-              <span className={`kind-badge status-${owner.status}`}>
-                {labels[owner.status] || owner.status}
+    <section className="stage">
+      <StageHead
+        title={title}
+        meta={
+          owner && (
+            <>
+              <span className="badge is-accent">
+                {owner.kind === "session" ? "对话" : "子任务"}
               </span>
-            )}
-          </div>
-          <p className="detail-meta">
-            <span className="mono">{owner.id}</span>
-            {owner.model && <span> · {owner.model}</span>}
-            <span> · 创建 {fullTime(owner.created_at)}</span>
-            <span> · 更新 {fullTime(owner.updated_at)}</span>
-          </p>
-          <div className="stat-grid">
-            <CostStat
-              label={owner.kind === "session" ? "对话自身费用" : "任务费用"}
-              cost={summary.cost}
-              requests={summary.requests}
-            />
-            {owner.kind === "session" && tasks.length > 0 && (
-              <CostStat label="含子任务合计" cost={owner.cost} requests={owner.request_count} />
-            )}
-            <Stat label="模型请求" value={summary.requests.toLocaleString("en-US")} />
-            <Stat label="记录条数" value={owner.message_count.toLocaleString("en-US")} />
-          </div>
-          {tokenChips(summary.tokens).length > 0 && (
-            <div className="pill-row">
-              {tokenChips(summary.tokens).map((chip) => (
-                <span key={chip} className="detail-pill">
-                  {chip}
+              {owner.status && (
+                <span className={`badge ${statusTone(owner.status)}`}>
+                  {labels[owner.status] || owner.status}
                 </span>
+              )}
+            </>
+          )
+        }
+      >
+        {owner?.kind === "session" && (
+          <Link to={`/sessions/${owner.id}`} className="btn btn-quiet sm">
+            <Icon name="messages" size={14} />
+            打开对话
+          </Link>
+        )}
+        {owner?.kind === "task" && owner.session_id && (
+          <Link to={`/logs/session/${owner.session_id}`} className="btn btn-quiet sm">
+            <Icon name="back" size={14} />
+            所属对话
+          </Link>
+        )}
+      </StageHead>
+      <main className="stage-scroll">
+        <div className="page">
+          {owner && summary && (
+            <>
+              <p className="detail-meta">
+                <span className="mono">{owner.id}</span>
+                {owner.model && <span>{owner.model}</span>}
+                <span>创建于 {fullTime(owner.created_at)}</span>
+                <span>更新于 {fullTime(owner.updated_at)}</span>
+              </p>
+              <div className="stat-grid">
+                <CostStat
+                  label={owner.kind === "session" ? "对话自身费用" : "任务费用"}
+                  cost={summary.cost}
+                  requests={summary.requests}
+                  accent
+                />
+                {owner.kind === "session" && tasks.length > 0 && (
+                  <CostStat label="含子任务合计" cost={owner.cost} requests={owner.request_count} />
+                )}
+                <Stat label="模型请求" value={summary.requests.toLocaleString("en-US")} />
+                <Stat label="记录条数" value={owner.message_count.toLocaleString("en-US")} />
+              </div>
+              {(chips.length > 0 || summary.models.length > 0) && (
+                <div className="card usage-card">
+                  {chips.length > 0 && (
+                    <div className="usage-row">
+                      <div className="pill-row">
+                        {chips.map((chip) => (
+                          <span key={chip} className="pill">
+                            {chip}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {summary.models.map((model) => (
+                    <div key={model.model} className="usage-row">
+                      <div className="usage-row-head">
+                        <b className="mono">{model.model}</b>
+                        <span className="usage-row-count">{model.requests} 次请求</span>
+                        <span className="usage-row-cost">
+                          {costText(model.cost, model.requests)}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {tasks.length > 0 && (
+                <section className="logs-section">
+                  <h3>子任务 · {tasks.length}</h3>
+                  <div className="card usage-card">
+                    {tasks.map((task) => (
+                      <Link key={task.id} to={`/logs/task/${task.id}`} className="task-link">
+                        <Icon name="bot" size={15} />
+                        <span className="clip grow">{ownerTitle(task)}</span>
+                        {task.status && (
+                          <span className={`badge ${statusTone(task.status)}`}>
+                            {labels[task.status] || task.status}
+                          </span>
+                        )}
+                        <Icon name="chev" size={14} />
+                      </Link>
+                    ))}
+                  </div>
+                </section>
+              )}
+            </>
+          )}
+
+          <div className="detail-toolbar">
+            <div className="seg" role="group" aria-label="记录类型">
+              {typeOptions.map((item) => (
+                <button
+                  key={item.value}
+                  type="button"
+                  className={`seg-item${type === item.value ? " selected" : ""}`}
+                  aria-pressed={type === item.value}
+                  onClick={() => setType(item.value)}
+                >
+                  {item.label}
+                </button>
               ))}
             </div>
-          )}
-          {summary.models.length > 0 && (
-            <div className="logs-models">
-              {summary.models.map((model) => (
-                <span key={model.model} className="logs-model-line">
-                  <span className="mono">{model.model}</span>
-                  <span>
-                    {model.requests} 次 · {costText(model.cost, model.requests)}
-                  </span>
-                </span>
-              ))}
+            <div className="search-field">
+              <Icon name="search" size={15} />
+              <input
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                aria-label="搜索记录"
+                placeholder="搜索这一项里的内容"
+              />
+              {query && (
+                <button type="button" aria-label="清除搜索" onClick={() => setQuery("")}>
+                  <Icon name="close" size={12} />
+                </button>
+              )}
             </div>
-          )}
-          <div className="detail-links">
-            {owner.kind === "session" && (
-              <Link to={`/sessions/${owner.id}`} className="detail-link">
-                <Icon name="messages" size={14} />
-                打开对话
-              </Link>
+          </div>
+
+          <div className="record-list">
+            {error && <p className="note is-error">{error}</p>}
+            {!error && loading && entries.length === 0 && <p className="note">正在读取…</p>}
+            {!error && !loading && entries.length === 0 && (
+              <div className="empty">
+                <Icon name="logs" size={24} />
+                <strong>{filtered ? "没有匹配的记录" : "还没有任何记录"}</strong>
+              </div>
             )}
-            {owner.kind === "task" && owner.session_id && (
-              <Link to={`/logs/session/${owner.session_id}`} className="detail-link">
-                <Icon name="back" size={14} />
-                所属对话：{owner.session_title || "未命名对话"}
-              </Link>
+            {entries.map((entry) => {
+              const label = dayLabel(entry.at);
+              const showDay = label !== "" && label !== lastDay;
+              lastDay = label || lastDay;
+              return (
+                <div key={entry.key} className="record-slot">
+                  {showDay && <div className="log-day">{label}</div>}
+                  <RecordItem entry={entry} />
+                </div>
+              );
+            })}
+            {hasMore && (
+              <button
+                type="button"
+                className="btn btn-quiet logs-more"
+                disabled={loadingOlder}
+                onClick={() => void loadOlder()}
+              >
+                {loadingOlder ? "正在读取…" : "加载更早的记录"}
+              </button>
             )}
-            {tasks.map((task) => (
-              <Link key={task.id} to={`/logs/task/${task.id}`} className="detail-link">
-                <Icon name="terminal" size={14} />
-                <span className="clip">{ownerTitle(task)}</span>
-              </Link>
-            ))}
           </div>
         </div>
-      ) : (
-        <div className="detail-head">
-          <h2 className="detail-title">{error ? "无法读取" : "正在读取…"}</h2>
-        </div>
-      )}
-
-      <div className="detail-toolbar">
-        <div className="chip-group" role="group" aria-label="记录类型">
-          {typeOptions.map((item) => (
-            <button
-              key={item.value}
-              type="button"
-              className={`filter-chip${type === item.value ? " selected" : ""}`}
-              aria-pressed={type === item.value}
-              onClick={() => setType(item.value)}
-            >
-              {item.label}
-            </button>
-          ))}
-        </div>
-        <div className="logs-search">
-          <Icon name="search" size={15} />
-          <input
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            aria-label="搜索记录"
-            placeholder="搜索这一项里的内容"
-          />
-          {query && (
-            <button type="button" aria-label="清除搜索" onClick={() => setQuery("")}>
-              <Icon name="close" size={13} />
-            </button>
-          )}
-        </div>
-      </div>
-
-      <div className="detail-body">
-        {error && <p className="logs-note is-error">{error}</p>}
-        {!error && !loading && entries.length === 0 && (
-          <p className="logs-note">{filtered ? "没有匹配的记录" : "还没有任何记录"}</p>
-        )}
-        {entries.map((entry) => {
-          const label = dayLabel(entry.at);
-          const showDay = label !== "" && label !== lastDay;
-          lastDay = label || lastDay;
-          return (
-            <div key={entry.key}>
-              {showDay && <div className="log-day">{label}</div>}
-              <RecordItem entry={entry} />
-            </div>
-          );
-        })}
-        {hasMore && (
-          <button
-            type="button"
-            className="btn btn-quiet logs-more"
-            disabled={loadingOlder}
-            onClick={() => void loadOlder()}
-          >
-            {loadingOlder ? "正在读取…" : "加载更早的记录"}
-          </button>
-        )}
-      </div>
-    </div>
+      </main>
+    </section>
   );
 }

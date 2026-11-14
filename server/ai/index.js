@@ -268,6 +268,7 @@ export async function callModel(
           model,
           url: config.url,
           serviceTier: result.service_tier,
+          at: Date.now(),
         }),
       };
     } catch (error) {

@@ -9,3 +9,14 @@ export const labels: Record<string, string> = {
 export function active(record: { status: string }) {
   return record.status === "running" || record.status === "cancelling";
 }
+
+/** 状态徽章的色调：进行中绿色带呼吸点，失败红色，其余中性。配合 .badge 使用。 */
+export function statusTone(status: string) {
+  if (status === "running" || status === "cancelling") {
+    return "is-ok is-live";
+  }
+  if (status === "failed" || status === "interrupted") {
+    return "is-danger";
+  }
+  return "";
+}

@@ -1,41 +1,18 @@
 import * as Dropdown from "@radix-ui/react-dropdown-menu";
 import { useNavigate } from "react-router";
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 
-import { Icon, type IconName } from "../icons/Icon";
+import { Icon, Mark } from "../icons/Icon";
 import { copyText } from "../lib/clipboard";
+import { toast } from "../overlay/toast";
 import { Hint } from "../overlay/Hint";
 import { Sheet } from "../overlay/Sheet";
 import { AttachmentInfo } from "./AttachmentInfo";
 import { dayLabel, formatDuration, renderMd } from "./format";
 import { usageSummary } from "./metering";
 import { TurnEntries, Working, type TurnEntry } from "./Process";
-import { seedDraft } from "./draft";
 import { branchThread, loadOlder, retrySend, useThread } from "./store";
 import { buildRows, type Row, type UsageRecord } from "./thread";
-
-/** 空白对话的起手式:每一条都是这个 Agent 真做得到的事。点了填进输入框,不直接发。 */
-const STARTERS: Array<{
-  icon: IconName;
-  text: string;
-  label: string;
-}> = [
-  {
-    icon: "doc",
-    label: "梳理项目",
-    text: "看一下当前目录的结构,总结每个目录是干什么的",
-  },
-  {
-    icon: "terminal",
-    label: "检查环境",
-    text: "检查这台机器的负载、内存和磁盘使用情况,有问题告诉我",
-  },
-  {
-    icon: "pen",
-    label: "整理文件",
-    text: "把最近一天系统日志里的错误整理出来",
-  },
-];
 
 type Block =
   | {
@@ -87,7 +64,10 @@ function AssistantActions({
           type="button"
           className="act"
           aria-label="复制回答"
-          onClick={() => void copyText(row.content)}
+          onClick={() => {
+            void copyText(row.content);
+            toast("已复制");
+          }}
         >
           <Icon name="copy" size={15} />
         </button>
@@ -443,10 +423,29 @@ export function MessageStream() {
 
   const usageInfo = usageModal ? usageSummary(usageModal) : null;
 
+  // 代码块标题行里的「复制」按钮由这里统一处理：正文是渲染好的 HTML，没有各自的事件。
+  const copyCodeBlock = (event: MouseEvent<HTMLDivElement>) => {
+    if (!(event.target instanceof Element)) {
+      return;
+    }
+    const button = event.target.closest("[data-copy-code]");
+    if (!button) {
+      return;
+    }
+    const code = button.closest(".code-block")?.querySelector("pre code");
+    void copyText(code?.textContent || "");
+    toast("代码已复制");
+  };
+
   return (
     <div className="stream-region">
       <main ref={scrollRef} className="stream" onScroll={onScroll}>
-        <div key={currentId || "__draft__"} ref={innerRef} className="stream-inner">
+        <div
+          key={currentId || "__draft__"}
+          ref={innerRef}
+          className="stream-inner"
+          onClick={copyCodeBlock}
+        >
           {loadingOlder && <span className="chip">加载更早的消息…</span>}
           {!loadingOlder && hasMore && rows.length > 0 && (
             <button className="chip chip-btn" onClick={loadEarlier}>
@@ -458,22 +457,9 @@ export function MessageStream() {
 
           {ready && !rows.length && (
             <div className="blank float-in">
+              <Mark size={52} />
               <h1 className="blank-title">有什么可以帮你？</h1>
-              <p className="blank-description">从一个问题、一份文件，或一个想法开始。</p>
-              <div className="starters">
-                {STARTERS.map((starter) => (
-                  <button
-                    key={starter.text}
-                    className="starter"
-                    onClick={() => seedDraft(starter.text)}
-                  >
-                    <span className="starter-ic">
-                      <Icon name={starter.icon} size={15} />
-                    </span>
-                    <span className="starter-text">{starter.label}</span>
-                  </button>
-                ))}
-              </div>
+              <p className="blank-description">在这台机器上执行命令、读写文件，把事情做完。</p>
             </div>
           )}
 
@@ -588,6 +574,7 @@ export function MessageStream() {
                   className="chip chip-btn"
                   onClick={() => setCompactionModal(row)}
                 >
+                  <Icon name="shrink" size={12} />
                   已压缩早期对话
                 </button>
               );
@@ -596,7 +583,7 @@ export function MessageStream() {
             if (row.code === "error") {
               return (
                 <div key={block.key} className="stream-error" role="alert">
-                  <Icon name="alert" size={18} />
+                  <Icon name="alert" size={17} />
                   <div>
                     <strong>本次回复未完成</strong>
                     <p>{row.content}</p>
@@ -640,32 +627,21 @@ export function MessageStream() {
       )}
 
       {usageModal && usageInfo && (
-        <Sheet
-          title="用量与费用"
-          className="usage-sheet"
-          onClose={() => setUsageModal(null)}
-          footer={
-            <button type="button" className="btn btn-quiet" onClick={() => setUsageModal(null)}>
-              关闭
-            </button>
-          }
-        >
-          <div className="usage-summary-pills">
+        <Sheet title="用量与费用" className="wide" onClose={() => setUsageModal(null)}>
+          <div className="pill-row">
             {usageInfo.tokens.map((item) => (
-              <span key={item} className="detail-pill">
+              <span key={item} className="pill">
                 {item}
               </span>
             ))}
-            {usageModal.length > 1 && (
-              <span className="detail-pill">{usageModal.length} 次请求</span>
-            )}
+            {usageModal.length > 1 && <span className="pill">{usageModal.length} 次请求</span>}
             {usageInfo.costs.map((cost) => (
-              <span key={cost} className="detail-pill is-accent">
+              <span key={cost} className="pill is-accent">
                 {cost}
               </span>
             ))}
           </div>
-          <pre className="usage-raw">{JSON.stringify(usageInfo.raw, null, 2)}</pre>
+          <pre className="well sheet-well">{JSON.stringify(usageInfo.raw, null, 2)}</pre>
         </Sheet>
       )}
 
@@ -676,41 +652,23 @@ export function MessageStream() {
               ? `执行过程 · ${formatDuration(processModal.durationMs)}`
               : "执行过程"
           }
-          className="process-sheet"
+          className="wide"
           onClose={() => setProcessModal(null)}
-          footer={
-            <button type="button" className="btn btn-quiet" onClick={() => setProcessModal(null)}>
-              关闭
-            </button>
-          }
         >
-          <div className="process-sheet-list">
+          <div className="process-list">
             <TurnEntries items={processModal.items} inFold />
           </div>
         </Sheet>
       )}
 
       {compactionModal && (
-        <Sheet
-          title="上下文压缩摘要"
-          className="process-sheet"
-          onClose={() => setCompactionModal(null)}
-          footer={
-            <button
-              type="button"
-              className="btn btn-quiet"
-              onClick={() => setCompactionModal(null)}
-            >
-              关闭
-            </button>
-          }
-        >
+        <Sheet title="上下文压缩摘要" className="wide" onClose={() => setCompactionModal(null)}>
           <div
             className="md"
             dangerouslySetInnerHTML={{ __html: renderMd(compactionModal.content || "") }}
           />
           {compactionModal.usageRecord && (
-            <pre className="usage-raw">
+            <pre className="well sheet-well">
               {JSON.stringify(usageSummary([compactionModal.usageRecord]).raw, null, 2)}
             </pre>
           )}

@@ -41,7 +41,7 @@ export function ConversationRow({
   onMenuTrigger: (element: HTMLButtonElement) => void;
 }) {
   const title = threadTitle(thread);
-  const classes = ["conv"];
+  const classes = ["row", "conv"];
   if (active) {
     classes.push("on");
   }
@@ -69,19 +69,19 @@ export function ConversationRow({
       </Link>
       <Dropdown.Root>
         <Dropdown.Trigger
-          className="conv-menu icon-btn"
+          className="conv-menu icon-btn sm"
           onFocus={(event) => onMenuTrigger(event.currentTarget)}
           onPointerDown={(event) => onMenuTrigger(event.currentTarget)}
           aria-label={`对话操作：${title}`}
         >
-          <Icon name="more" size={17} />
+          <Icon name="more" size={16} />
         </Dropdown.Trigger>
         <Dropdown.Portal>
           <Dropdown.Content
             className="dropdown-content"
             align="start"
-            side="right"
-            sideOffset={8}
+            side="bottom"
+            sideOffset={6}
             collisionPadding={12}
           >
             <Dropdown.Item className="dropdown-item" onSelect={() => onTogglePin(thread)}>

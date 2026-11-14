@@ -10,12 +10,12 @@ if ($env:AGENT_VERSION) {
     $Version = $env:AGENT_VERSION.TrimStart("v")
 }
 
-$BinDir = Join-Path $env:LOCALAPPDATA "agentic\bin"
+$BinDir = Join-Path $env:LOCALAPPDATA "agent\bin"
 if ($env:AGENT_BIN_DIR) {
     $BinDir = $env:AGENT_BIN_DIR
 }
 
-$InstallDir = Join-Path $env:LOCALAPPDATA "agentic\program"
+$InstallDir = Join-Path $env:LOCALAPPDATA "agent\program"
 if ($env:AGENT_INSTALL_DIR) {
     $InstallDir = $env:AGENT_INSTALL_DIR
 }
@@ -42,7 +42,7 @@ if ($env:AGENT_RELEASE_BASE_URL) {
 }
 
 $Archive = "agent_windows_$Arch.zip"
-$Temp = Join-Path ([IO.Path]::GetTempPath()) ("agentic-" + [guid]::NewGuid())
+$Temp = Join-Path ([IO.Path]::GetTempPath()) ("agent-" + [guid]::NewGuid())
 New-Item -ItemType Directory -Path $Temp | Out-Null
 
 try {
@@ -59,7 +59,7 @@ try {
     }
 
     Expand-Archive -Path $Zip -DestinationPath $Temp -Force
-    $Source = Join-Path $Temp "agentic"
+    $Source = Join-Path $Temp "agent"
     $Node = Join-Path $Source "runtime\node.exe"
     $Cli = Join-Path $Source "server\scripts\cli.js"
     & $Node $Cli version

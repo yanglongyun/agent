@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { labels, active } from "./status";
+import { labels, active, statusTone } from "./status";
 import { Sheet } from "../overlay/Sheet";
 import { api } from "../lib/api";
 
@@ -84,40 +84,39 @@ export function ProcessDetail({
   return (
     <Sheet
       title="后台命令"
-      className="task-detail"
+      className="xwide"
       onClose={onClose}
       footer={
-        <>
-          <span className={`task-state ${record?.status || ""}`}>
-            {record ? labels[record.status] : "正在读取…"}
-          </span>
-          {running && (
-            <button
-              type="button"
-              className="btn btn-quiet task-stop"
-              disabled={pending || record.status === "cancelling"}
-              onClick={() => void act("cancel")}
-            >
-              停止命令
-            </button>
-          )}
-          <button type="button" className="btn btn-quiet" onClick={onClose}>
-            关闭
+        running ? (
+          <button
+            type="button"
+            className="btn btn-danger-quiet"
+            disabled={pending || record.status === "cancelling"}
+            onClick={() => void act("cancel")}
+          >
+            停止命令
           </button>
-        </>
+        ) : undefined
       }
     >
       {(readError || error) && <p className="sheet-error">{readError || error}</p>}
+      {!record && !readError && <p className="note">正在读取…</p>}
       {record && (
         <>
-          <pre className="process-command">{record.command}</pre>
-          <div className="task-facts">
-            <span>工作目录：{record.workdir}</span>
-            {record.exit_code !== null && <span>退出码 {record.exit_code}</span>}
+          <div className="task-brief">
+            <pre className="well process-command">{record.command}</pre>
+            <div className="pill-row">
+              <span className={`badge ${statusTone(record.status)}`}>{labels[record.status]}</span>
+              <span className="pill mono">{record.workdir}</span>
+              {record.exit_code !== null && <span className="pill">退出码 {record.exit_code}</span>}
+            </div>
           </div>
           {record.error && <p className="sheet-error">{record.error}</p>}
-          {record.truncated > 0 && <p className="sheet-note">输出过长，显示末尾内容。</p>}
-          <pre className="process-output" aria-label="命令输出">
+          <div className="process-label">
+            <span>输出</span>
+            {record.truncated > 0 && <small>输出过长，只显示末尾</small>}
+          </div>
+          <pre className="well process-output" aria-label="命令输出">
             {record.output || "暂无输出"}
           </pre>
           {running && !record.stdin_closed && (
@@ -128,9 +127,12 @@ export function ProcessDetail({
                 void act("write");
               }}
             >
-              <label htmlFor="process-input">发送输入</label>
+              <label className="field" htmlFor="process-input">
+                发送输入
+              </label>
               <textarea
                 id="process-input"
+                className="field-input mono"
                 value={input}
                 onChange={(event) => setInput(event.target.value)}
                 placeholder="输入内容，发送时追加换行"
@@ -140,13 +142,13 @@ export function ProcessDetail({
               <div>
                 <button
                   type="button"
-                  className="btn btn-quiet"
+                  className="btn btn-ghost sm"
                   disabled={pending}
                   onClick={() => void act("close")}
                 >
                   结束输入
                 </button>
-                <button type="submit" className="btn btn-quiet" disabled={pending}>
+                <button type="submit" className="btn btn-quiet sm" disabled={pending}>
                   发送
                 </button>
               </div>

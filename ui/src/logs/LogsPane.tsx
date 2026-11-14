@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router";
+import { Link, useMatch } from "react-router";
 import { Icon } from "../icons/Icon";
 import { api } from "../lib/api";
+import { PaneHead } from "../shell/heads";
+import { useShell } from "../shell/layout";
 import { labels } from "../tasks/status";
 import { costShort, listTime, ownerTitle } from "./format";
 import { useDebounced } from "./hooks";
@@ -26,16 +28,14 @@ function subtitle(owner: Owner) {
     }
     return parts.join(" · ");
   }
-  return `对话 · ${owner.message_count} 条消息 · ${owner.request_count} 次请求`;
+  return `${owner.message_count} 条消息 · ${owner.request_count} 次请求`;
 }
 
-export function OwnerList({
-  selectedId,
-  overviewSelected,
-}: {
-  selectedId?: string;
-  overviewSelected: boolean;
-}) {
+// 日志应用的列表栏：用量总览入口 + 全部对话和子任务，可搜索、按类型筛选。
+export function LogsPane() {
+  const detail = useMatch("/logs/:kind/:id");
+  const selectedId = detail?.params.id;
+  const closeDrawer = useShell((state) => state.closeDrawer);
   const [query, setQuery] = useState("");
   const [kind, setKind] = useState<Kind>("all");
   const [owners, setOwners] = useState<Owner[]>([]);
@@ -98,9 +98,10 @@ export function OwnerList({
   }
 
   return (
-    <aside className="logs-list" aria-label="对话和任务">
-      <div className="logs-list-head">
-        <div className="logs-search">
+    <>
+      <PaneHead title="日志" />
+      <div className="pane-tools">
+        <div className="search-field">
           <Icon name="search" size={15} />
           <input
             value={query}
@@ -110,16 +111,16 @@ export function OwnerList({
           />
           {query && (
             <button type="button" aria-label="清除搜索" onClick={() => setQuery("")}>
-              <Icon name="close" size={13} />
+              <Icon name="close" size={12} />
             </button>
           )}
         </div>
-        <div className="chip-group" role="group" aria-label="类型">
+        <div className="seg fill" role="group" aria-label="类型">
           {kinds.map((item) => (
             <button
               key={item.value}
               type="button"
-              className={`filter-chip${kind === item.value ? " selected" : ""}`}
+              className={`seg-item${kind === item.value ? " selected" : ""}`}
               aria-pressed={kind === item.value}
               onClick={() => setKind(item.value)}
             >
@@ -128,27 +129,21 @@ export function OwnerList({
           ))}
         </div>
       </div>
-      <div className="logs-owner-scroll">
-        <Link
-          to="/logs/overview"
-          className={`owner-row overview-row${overviewSelected ? " on" : ""}`}
-        >
-          <span className="owner-main">
-            <span className="owner-title">用量总览</span>
-            <span className="owner-sub">全部对话和子任务的 token 与费用</span>
-          </span>
-          <Icon name="chev" size={15} />
+      <nav className="pane-scroll" aria-label="对话和任务">
+        <Link to="/logs/overview" className={`row${detail ? "" : " on"}`} onClick={closeDrawer}>
+          <Icon name="chart" size={16} />
+          用量总览
         </Link>
-        {error && <p className="logs-note is-error">{error}</p>}
-        {loading && owners.length === 0 && <p className="logs-note">正在读取…</p>}
-        {!loading && !error && owners.length === 0 && (
-          <p className="logs-note">没有匹配的对话或任务</p>
-        )}
+        <div className="pane-label">对话与子任务</div>
+        {error && <p className="note is-error">{error}</p>}
+        {loading && owners.length === 0 && <p className="note">正在读取…</p>}
+        {!loading && !error && owners.length === 0 && <p className="note">没有匹配的对话或任务</p>}
         {owners.map((owner) => (
           <Link
             key={`${owner.kind}:${owner.id}`}
             to={`/logs/${owner.kind}/${owner.id}`}
-            className={`owner-row${selectedId === owner.id ? " on" : ""}`}
+            className={`row owner-row${selectedId === owner.id ? " on" : ""}`}
+            onClick={closeDrawer}
           >
             <span className="owner-main">
               <span className="owner-title clip">{ownerTitle(owner)}</span>
@@ -163,14 +158,14 @@ export function OwnerList({
         {hasMore && (
           <button
             type="button"
-            className="btn btn-quiet logs-more"
+            className="btn btn-quiet sm logs-more"
             disabled={loadingMore}
             onClick={() => void loadMore()}
           >
             {loadingMore ? "正在读取…" : "加载更多"}
           </button>
         )}
-      </div>
-    </aside>
+      </nav>
+    </>
   );
 }

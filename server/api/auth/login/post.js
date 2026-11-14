@@ -12,13 +12,13 @@ export default async function login(req, res, context) {
     fail(401, "访问令牌不正确");
   }
   const key = createHash("sha256")
-    .update("agentic-cookie:" + context.config.api.token)
+    .update("agent-cookie:" + context.config.api.token)
     .digest();
   const expiry = String(Math.floor(Date.now() / 1000) + 2592000);
   const signature = createHmac("sha256", key).update(expiry).digest("hex");
   res.setHeader(
     "set-cookie",
-    `agentic_session=${expiry}.${signature}; Path=/; HttpOnly; SameSite=Strict; Max-Age=2592000`,
+    `agent_session=${expiry}.${signature}; Path=/; HttpOnly; SameSite=Strict; Max-Age=2592000`,
   );
   return json(res, 200, { ok: true });
 }

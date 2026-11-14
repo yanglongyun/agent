@@ -25,28 +25,26 @@ export function Login() {
   };
 
   return (
-    <div className="login-page">
+    <main className="gate">
+      <div className="aurora" aria-hidden="true" />
       <form
-        className="login-card"
+        className="login-card float-in"
         onSubmit={(event) => {
           event.preventDefault();
           void submit();
         }}
       >
-        <div className="login-brand">
-          <Mark size={34} />
-          <span>agentic</span>
-        </div>
-        <h1>连接工作区</h1>
-        <p className="login-intro">使用访问令牌登录，继续你的工作。</p>
-        <label className="login-label">
+        <Mark size={48} />
+        <h1>连接到 agent</h1>
+        <p className="login-intro">输入访问令牌，回到你的工作区。</p>
+        <label className="field">
           访问令牌
           <input
             className="field-input mono"
             type="password"
             autoFocus
             autoComplete="off"
-            placeholder="访问令牌"
+            placeholder="粘贴访问令牌"
             value={token}
             onChange={(event) => setToken(event.target.value)}
           />
@@ -68,18 +66,15 @@ export function Login() {
             </>
           ) : (
             <>
-              连接工作区
+              连接
               <Icon name="arrow" size={16} />
             </>
           )}
         </button>
-        <details className="login-help">
-          <summary>在哪里找到访问令牌？</summary>
-          <p>
-            令牌在安装时显示，也可以在服务器上执行 <code>agent token</code> 查看。
-          </p>
-        </details>
+        <p className="login-help">
+          令牌在安装时显示，也可以在服务器上执行 <code>agent token</code> 查看。
+        </p>
       </form>
-    </div>
+    </main>
   );
 }

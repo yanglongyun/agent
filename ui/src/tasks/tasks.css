@@ -1,202 +1,166 @@
-.tasks-sheet.sheet {
-  width: min(560px, calc(100vw - 24px));
-}
-.tasks-sheet-sub {
-  margin: 0 0 14px;
-  color: var(--text-3);
-  font-size: 13px;
-}
-.tasks-empty {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 10px;
-  padding: 36px 16px;
-  color: var(--text-4);
-  font-size: 13px;
-  text-align: center;
+/* 任务与后台命令：列表弹窗、子任务详情、后台命令详情。 */
+.tasks-sub {
+  margin-bottom: 12px;
 }
 .tasks-list {
-  list-style: none;
-  padding: 0;
   margin: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
+  padding: 0;
+  overflow: hidden;
+  list-style: none;
 }
-.tasks-list li {
-  padding: 12px 14px;
-  border: 1px solid var(--edge-soft);
-  border-radius: 14px;
-  background: var(--fill);
-  transition: background 0.16s;
-}
-.tasks-list li:hover,
-.tasks-list li:focus-within {
-  background: var(--hover);
+.tasks-list li + li {
+  border-top: 1px solid var(--edge);
 }
 .task-open {
-  width: 100%;
-  text-align: left;
   display: flex;
-  gap: 14px;
   align-items: center;
-  text-decoration: none;
-  color: var(--text-1);
-  font-size: 14px;
-  font-weight: 550;
+  gap: 12px;
+  width: 100%;
+  padding: 11px 12px 11px 14px;
+  text-align: left;
+  transition: background 0.14s;
+}
+.task-open:hover {
+  background: var(--tint-1);
+}
+.task-open > svg {
+  color: var(--text-4);
+}
+.task-icon {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--r-2);
+  background: var(--tint-2);
+  color: var(--text-2);
+}
+.task-main {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
 }
 .task-title {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.task-status {
-  flex: none;
-  padding: 2px 9px;
-  border-radius: 99px;
-  background: var(--fill-2);
-  color: var(--text-3);
-  font-size: 12px;
-  font-weight: 500;
-}
-.task-status.running {
-  background: var(--ok-soft);
-  color: var(--ok);
-}
-.task-status.failed,
-.task-status.interrupted {
-  background: var(--danger-soft);
-  color: var(--danger);
-}
-.tasks-list small {
-  display: block;
-  color: var(--text-3);
-  margin-top: 5px;
-  font-size: 12px;
-}
-.tasks-note {
-  margin: 0;
-  font-size: 13px;
-  color: var(--text-3);
-}
-.task-detail.sheet {
-  width: min(740px, calc(100vw - 24px));
-}
-.task-detail .sheet-body {
-  overscroll-behavior: contain;
-}
-.task-description {
-  margin: 0;
-  font-size: 15px;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-  line-height: 1.65;
-  max-height: 180px;
-  overflow: auto;
-}
-.task-facts {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 10px 18px;
-  margin: 18px 0;
-  font-size: 13px;
-  color: var(--text-3);
-}
-.task-facts > span {
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
-.task-parent {
-  color: var(--accent);
-  font-size: 13px;
+  color: var(--text-1);
+  font-size: 13.5px;
   font-weight: 550;
+}
+.task-title.mono {
+  font-size: 12.5px;
+}
+.task-sub {
+  color: var(--text-3);
+  font-size: 12px;
+}
+.task-brief {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
   margin-bottom: 16px;
 }
-.task-state {
-  margin-right: auto;
-  color: var(--text-3);
-  font-size: 13px;
+.task-description {
+  max-height: 168px;
+  padding: 12px 14px;
+  overflow: auto;
+  border-radius: var(--r-3);
+  background: var(--tint-1);
+  color: var(--text-1);
+  font-size: 14px;
+  line-height: 1.7;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  user-select: text;
 }
-.task-state.running,
-.task-state.completed {
-  color: var(--ok);
+.task-brief .pill-row {
+  align-items: center;
 }
-.task-state.failed,
-.task-state.interrupted,
-.task-stop {
-  color: var(--danger);
+.task-parent {
+  margin-left: 4px;
+  font-size: 12.5px;
 }
 .task-inherited {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  margin: 24px 0;
-  font-size: 13px;
-  color: var(--text-3);
+  margin-bottom: 14px;
 }
-.task-inherited input {
-  accent-color: var(--accent);
+.task-older {
+  display: flex;
+  margin: 0 auto 14px;
 }
 .task-transcript {
   display: flex;
   flex-direction: column;
-  gap: 18px;
-  padding-bottom: 40px;
+  gap: 6px;
+  padding-top: 14px;
+  border-top: 1px solid var(--edge);
 }
 .task-message {
   min-width: 0;
+  padding: 8px 0;
 }
 .task-message > small {
   display: block;
-  margin-bottom: 8px;
-  color: var(--text-3);
-  font-size: 13px;
+  margin-bottom: 4px;
+  color: var(--text-4);
+  font-size: 12px;
+  font-weight: 600;
+}
+.task-message .md {
+  font-size: 14px;
 }
 .task-message img {
   display: block;
   max-width: 100%;
   max-height: 480px;
-  border-radius: 10px;
+  margin-top: 8px;
+  border-radius: var(--r-2);
 }
-.process-command,
-.process-output {
-  padding: 14px;
-  border: 1px solid var(--edge);
-  border-radius: 12px;
-  background: var(--fill);
-  font-family: var(--font-mono);
+.task-summary {
+  padding: 10px 14px;
+  border-radius: var(--r-3);
+  background: var(--tint-1);
   font-size: 13px;
-  line-height: 1.65;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
+}
+.task-summary summary {
+  color: var(--text-2);
+  font-weight: 550;
+  cursor: pointer;
+}
+.task-summary .md {
+  margin-top: 10px;
+  font-size: 13.5px;
+}
+.process-command {
+  max-height: 140px;
+  font-size: 12.5px;
+}
+.process-label {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 6px;
+  color: var(--text-2);
+  font-size: 12.5px;
+  font-weight: 550;
+}
+.process-label small {
+  color: var(--text-4);
+  font-size: 12px;
+  font-weight: 400;
 }
 .process-output {
   min-height: 120px;
   max-height: 360px;
-  overflow: auto;
 }
 .process-input {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  margin-top: 20px;
-  font-size: 13px;
-  color: var(--text-2);
-}
-.process-input textarea {
-  padding: 10px 12px;
-  border: 1px solid var(--edge);
-  border-radius: 12px;
-  background: var(--fill);
-  color: var(--text-1);
-  resize: vertical;
+  gap: 8px;
+  margin-top: 16px;
 }
 .process-input > div {
   display: flex;
   justify-content: flex-end;
-  gap: 8px;
+  gap: 6px;
 }

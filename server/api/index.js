@@ -1,6 +1,7 @@
 import auth from "./auth/index.js";
 import authorize from "./auth/authorize.js";
 import sessions from "./sessions/index.js";
+import notes from "./notes/index.js";
 import config from "./config/index.js";
 import status from "./status/index.js";
 import images from "./images/index.js";
@@ -36,6 +37,8 @@ export default function createApi(context) {
         return tasks(req, res, rest, context);
       case "sessions":
         return sessions(req, res, rest, context);
+      case "notes":
+        return notes(req, res, rest, context);
       case "logs":
         return logs(req, res, rest, context);
       case "config":

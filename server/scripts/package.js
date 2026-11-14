@@ -30,8 +30,8 @@ const suffix = windows ? "zip" : "tar.gz";
 const archiveName = `agent_${platform}_${arch}.${suffix}`;
 const dist = path.join(ROOT, "server/dist");
 await fs.mkdir(dist, { recursive: true });
-const staging = await fs.mkdtemp(path.join(os.tmpdir(), "agentic-package-"));
-const app = path.join(staging, "agentic");
+const staging = await fs.mkdtemp(path.join(os.tmpdir(), "agent-package-"));
+const app = path.join(staging, "agent");
 await fs.mkdir(app);
 function run(command, args, cwd = staging) {
   const result = spawnSync(command, args, { cwd, stdio: "inherit" });
@@ -153,9 +153,9 @@ try {
       `Compress-Archive -LiteralPath ${psQuote(app)} -DestinationPath ${psQuote(archive)}`,
     );
   } else if (windows) {
-    run("zip", ["-qr", archive, "agentic"]);
+    run("zip", ["-qr", archive, "agent"]);
   } else {
-    run("tar", ["-czf", archive, "agentic"]);
+    run("tar", ["-czf", archive, "agent"]);
   }
   const hash = createHash("sha256")
     .update(await fs.readFile(archive))

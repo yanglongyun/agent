@@ -1,10 +1,10 @@
 // 过程体系:思考 / 工具各是一行(图标位悬停换 chevron,展开转 90°),
-// 相邻的已完成工具收成一行摘要,完成的一轮整体收进「已工作X」折叠条。
-// 运行中的工具标签走扫光;整轮进行中时底部是转圈 + 「正在工作」。
+// 相邻的已完成工具收成一行摘要。主对话不直接显示过程,只在回答的「更多 → 执行过程」
+// 弹窗和子任务详情里出现;运行中的工具标签走扫光。
 import { type ReactNode } from "react";
 
 import { Icon } from "../icons/Icon";
-import { fmtArgs, fmtResult, isFailed, renderMd, toolMeta, formatDuration } from "./format";
+import { fmtArgs, fmtResult, isFailed, renderMd, toolMeta } from "./format";
 import { useThread } from "./store";
 import type { Row } from "./thread";
 import { Usage } from "./Usage";
@@ -51,7 +51,7 @@ export function ThinkItem({ row, compact }: { row: Row; compact?: boolean }) {
       </button>
       {open && (
         <div className="step-body">
-          <div className="step-block">{row.reasoning}</div>
+          <div className="well step-block">{row.reasoning}</div>
         </div>
       )}
     </div>
@@ -85,8 +85,8 @@ export function ToolItem({ row, compact }: { row: Row; compact?: boolean }) {
       </button>
       {open && (
         <div className="step-body">
-          <div className="step-block">{fmtArgs(row.args)}</div>
-          <div className="step-block">{row.result ? fmtResult(row.result) : "没有输出"}</div>
+          <div className="well step-block">{fmtArgs(row.args)}</div>
+          <div className="well step-block">{row.result ? fmtResult(row.result) : "没有输出"}</div>
           {row.images && row.images.length > 0 && (
             <div className="message-files">
               {row.images.map((src, index) => (
@@ -184,39 +184,8 @@ export function ToolGroup({ rows }: { rows: Row[] }) {
   );
 }
 
-/* ── 轮折叠条:「已工作 X ›」+ 通栏细线 ── */
-
-export function TurnFold({
-  id,
-  durationMs,
-  children,
-}: {
-  id: string;
-  durationMs: number | null;
-  children: ReactNode;
-}) {
-  const [open, setOpen] = useExpanded(id);
-  // 进折叠条的一定是已收尾的轮;算不出时长也绝不能显示成「执行中」
-  const label =
-    durationMs != null && durationMs > 0 ? `已工作 ${formatDuration(durationMs)}` : "过程";
-  return (
-    <div className={`fold${open ? " open" : ""}`}>
-      <button className="fold-head" aria-expanded={open} onClick={() => setOpen(!open)}>
-        <span className="fold-row">
-          <span className="fold-label">{label}</span>
-          <span className="fold-chev">
-            <Icon name="chev" size={12} />
-          </span>
-        </span>
-        <span className="fold-line" />
-      </button>
-      {open && <div className="fold-body">{children}</div>}
-    </div>
-  );
-}
-
 /* ── 有序渲染一串条目:过程做相邻分组,中间文本按 markdown 平铺 ──
-   inFold=true 时条目裸排(折叠条内部自带 gap);否则每条包一层消息行。 */
+   inFold=true 时条目裸排(外层容器自带 gap);否则每条包一层消息行。 */
 
 export function TurnEntries({ items, inFold }: { items: TurnEntry[]; inFold?: boolean }) {
   const nodes: ReactNode[] = [];
@@ -279,16 +248,13 @@ export function TurnEntries({ items, inFold }: { items: TurnEntry[]; inFold?: bo
   );
 }
 
-/* ── 正在回复:Messenger 三点打字气泡 ── */
+/* ── 正在回复：品牌色的呼吸光点 + 扫光文字 ── */
 
 export function Working() {
   return (
     <div className="working" role="status" aria-label="正在回复">
-      <span className="typing" aria-hidden="true">
-        <i />
-        <i />
-        <i />
-      </span>
+      <span className="working-orb" aria-hidden="true" />
+      <span className="sheen">正在处理…</span>
     </div>
   );
 }

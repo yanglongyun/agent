@@ -16,7 +16,7 @@ const quote = (value) =>
   '"';
 export function unitText({ node, cli, data, workdir, system }) {
   return `[Unit]
-Description=agentic web agent
+Description=agent web server
 After=network-online.target
 Wants=network-online.target
 
@@ -40,10 +40,10 @@ function target() {
   }
   const system = process.getuid() === 0;
   const file = system
-    ? "/etc/systemd/system/agentic.service"
+    ? "/etc/systemd/system/agent.service"
     : path.join(
         process.env.XDG_CONFIG_HOME || path.join(os.homedir(), ".config"),
-        "systemd/user/agentic.service",
+        "systemd/user/agent.service",
       );
   return { system, file };
 }
@@ -77,8 +77,8 @@ export function service(command, locations, config, listen) {
     fs.mkdirSync(path.dirname(unit.file), { recursive: true });
     fs.writeFileSync(unit.file, content);
     systemctl(unit, ["daemon-reload"]);
-    systemctl(unit, ["enable", "agentic"]);
-    systemctl(unit, ["restart", "agentic"]);
+    systemctl(unit, ["enable", "agent"]);
+    systemctl(unit, ["restart", "agent"]);
     if (!unit.system) {
       const result = spawnSync("loginctl", ["enable-linger", os.userInfo().username], {
         stdio: "ignore",
@@ -100,19 +100,19 @@ export function service(command, locations, config, listen) {
       throw new Error("服务未安装；先执行 agent install，或直接运行 agent serve");
     }
     if (command === "uninstall") {
-      systemctl(unit, ["disable", "--now", "agentic"]);
+      systemctl(unit, ["disable", "--now", "agent"]);
       fs.unlinkSync(unit.file);
       systemctl(unit, ["daemon-reload"]);
       console.log("服务已移除，数据目录保留。");
     } else if (command === "status") {
       console.log(
-        `状态：${systemctl(unit, ["is-active", "agentic"], true)}
+        `状态：${systemctl(unit, ["is-active", "agent"], true)}
 单元文件：${unit.file}
 访问地址：http://${config.api.listen}
 数据目录：${locations.root}`,
       );
     } else {
-      systemctl(unit, [command, "agentic"]);
+      systemctl(unit, [command, "agent"]);
     }
   }
 }

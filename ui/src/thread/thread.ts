@@ -48,6 +48,7 @@ export interface Metering {
     reference: string;
     rule_date: string;
     tier: string;
+    period: string | null;
     units: Array<{ kind: string; tokens: number; rate: number; amount: number }>;
   } | null;
 }

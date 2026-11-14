@@ -10,12 +10,8 @@ export function ModelSelect() {
   const navigate = useNavigate();
   return (
     <Dropdown.Root>
-      <Dropdown.Trigger
-        className="topbar-sub model-trigger"
-        aria-label="选择模型"
-        disabled={state.busy}
-        onClick={(event) => event.stopPropagation()}
-      >
+      <Dropdown.Trigger className="model-chip" aria-label="选择模型" disabled={state.busy}>
+        <Icon name="spark" size={14} />
         <span className="clip">{model?.name || "选择模型"}</span>
         <Icon name="chevronDown" size={13} />
       </Dropdown.Trigger>
@@ -23,11 +19,11 @@ export function ModelSelect() {
         <Dropdown.Content
           className="dropdown-content model-options"
           align="start"
-          side="bottom"
+          side="top"
           sideOffset={8}
           collisionPadding={12}
         >
-          <Dropdown.Label className="model-options-label">模型</Dropdown.Label>
+          <Dropdown.Label className="dropdown-label">模型</Dropdown.Label>
           <Dropdown.RadioGroup value={model?.id || ""} onValueChange={(id) => selectModel(id)}>
             {state.status?.models.map((item) => (
               <Dropdown.RadioItem

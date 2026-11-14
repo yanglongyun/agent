@@ -1,7 +1,9 @@
-// 壳布局:侧栏收起(宽屏)与抽屉(窄屏)。收起是长期偏好,跨启动记住。
+// 壳布局:列表栏收起(宽屏)与抽屉(窄屏)。收起是长期偏好,跨启动记住。
+import { useEffect, useState } from "react";
 import { create } from "zustand";
 
-const KEY = "agentic.sidebar.collapsed";
+const KEY = "agent.sidebar.collapsed";
+const NARROW = "(max-width: 760px)";
 const saved = (key: string) => {
   try {
     return localStorage.getItem(key) || "";
@@ -47,8 +49,20 @@ export const useShell = create<ShellState>((set) => ({
       }
       return {
         collapsed: false,
-        drawer: window.matchMedia("(max-width: 760px)").matches,
+        drawer: window.matchMedia(NARROW).matches,
       };
     }),
   closeDrawer: () => set({ drawer: false }),
 }));
+
+/** 窄屏：导航栏和列表栏收进抽屉，舞台铺满。 */
+export function useNarrow() {
+  const [narrow, setNarrow] = useState(() => window.matchMedia(NARROW).matches);
+  useEffect(() => {
+    const media = window.matchMedia(NARROW);
+    const update = () => setNarrow(media.matches);
+    media.addEventListener("change", update);
+    return () => media.removeEventListener("change", update);
+  }, []);
+  return narrow;
+}

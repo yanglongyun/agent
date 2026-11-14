@@ -9,6 +9,7 @@ import {
   FileText,
   Pencil,
   Sparkles,
+  NotebookPen,
   Trash2,
   Copy,
   GitBranch,
@@ -43,6 +44,17 @@ import {
   LayoutGrid,
   ScrollText,
   ArrowLeft,
+  Menu,
+  ChartNoAxesColumn,
+  KeyRound,
+  Info,
+  Server,
+  Palette,
+  Eye,
+  EyeOff,
+  Minimize2,
+  Bot,
+  PanelLeftClose,
 } from "lucide-react";
 
 // 全部界面使用 Lucide 同一套描边图标，按需打包。
@@ -78,6 +90,7 @@ const glyphs = {
   arrow: ArrowRight,
   chevronDown: ChevronDown,
   messages: MessagesSquare,
+  notes: NotebookPen,
   code: Code2,
   idea: Lightbulb,
   sliders: SlidersHorizontal,
@@ -91,6 +104,17 @@ const glyphs = {
   grid: LayoutGrid,
   logs: ScrollText,
   back: ArrowLeft,
+  menu: Menu,
+  chart: ChartNoAxesColumn,
+  key: KeyRound,
+  info: Info,
+  server: Server,
+  palette: Palette,
+  eye: Eye,
+  eyeOff: EyeOff,
+  shrink: Minimize2,
+  bot: Bot,
+  panelClose: PanelLeftClose,
 };
 export type IconName = keyof typeof glyphs;
 export function Icon({
@@ -108,7 +132,7 @@ export function Icon({
 export function Mark({ size = 30 }: { size?: number }) {
   return (
     <span className="brand-mark" style={{ width: size, height: size }} aria-hidden="true">
-      <Terminal size={Math.round(size * 0.57)} strokeWidth={2} />
+      <Terminal size={Math.round(size * 0.56)} strokeWidth={2.4} />
     </span>
   );
 }

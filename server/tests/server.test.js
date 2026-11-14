@@ -227,7 +227,7 @@ test("图片工具结果存文件地址，当前循环和数据库历史都转�
 });
 
 async function fixture(t, respond, overrides = {}) {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), "agentic-test-"));
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "agent-test-"));
   const p = paths({ AGENT_HOME: root });
   const { model, ...settings } = overrides;
   const config = {
@@ -308,10 +308,11 @@ test("业务表与计量表字段、路由、鉴权、分页和删除", async (t
     "usage",
     "created_at",
   ]);
+  assert.deepEqual(columns("notes"), ["id", "title", "body", "created_at", "updated_at"]);
   const tables = f.runtime.db
     .prepare("SELECT name,sql FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")
     .all();
-  assert.equal(tables.length, 6);
+  assert.equal(tables.length, 7);
   assert.deepEqual(columns("metering"), [
     "id",
     "session_id",

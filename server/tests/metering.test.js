@@ -130,3 +130,57 @@ test("不合法的缓存计数和分项不一致不能默默折算费用", () =>
     );
   }
 });
+
+test("DeepSeek 按 UTC 工作日高峰与平峰分别计价", () => {
+  const usage = {
+    input_tokens: 1000000,
+    input_tokens_details: { cached_tokens: 600000 },
+    output_tokens: 100000,
+  };
+  const deepseek = {
+    ...target,
+    model: "deepseek-flash",
+    url: "https://api.deepseek.com/v1/responses",
+  };
+  const peak = measure(usage, { ...deepseek, at: Date.UTC(2026, 10, 16, 2, 0) });
+  assert.equal(peak.cost.amount, 0.2436);
+  assert.equal(peak.cost.period, "peak");
+  assert.equal(peak.cost.rule_date, "2026-11-14");
+  const plain = measure(usage, { ...deepseek, at: Date.UTC(2026, 10, 16, 5, 0) });
+  assert.equal(plain.cost.amount, 0.1218);
+  assert.equal(plain.cost.period, "offpeak");
+  assert.equal(
+    measure(usage, { ...deepseek, at: Date.UTC(2026, 10, 14, 2, 0) }).cost.period,
+    "offpeak",
+  );
+  assert.equal(
+    measure(usage, { ...deepseek, at: Date.UTC(2026, 10, 16, 1, 0) }).cost.period,
+    "peak",
+  );
+  assert.equal(
+    measure(usage, { ...deepseek, at: Date.UTC(2026, 10, 16, 4, 0) }).cost.period,
+    "offpeak",
+  );
+  assert.equal(
+    measure(
+      {
+        prompt_tokens: 1000000,
+        prompt_tokens_details: { cached_tokens: 600000 },
+        completion_tokens: 100000,
+      },
+      { ...deepseek, protocol: "chat-completions", at: Date.UTC(2026, 10, 16, 2, 0) },
+    ).cost.amount,
+    0.2436,
+  );
+});
+
+test("时间型规则的输入输出按所选时段单价计费", () => {
+  const usage = { input_tokens: 1000000, output_tokens: 1000000 };
+  const deepseek = {
+    ...target,
+    model: "deepseek-flash",
+    url: "https://api.deepseek.com/v1/responses",
+  };
+  assert.equal(measure(usage, { ...deepseek, at: Date.UTC(2026, 10, 16, 2, 0) }).cost.amount, 1.5);
+  assert.equal(measure(usage, { ...deepseek, at: Date.UTC(2026, 10, 16, 5, 0) }).cost.amount, 0.75);
+});
