@@ -312,7 +312,43 @@ test("业务表与计量表字段、路由、鉴权、分页和删除", async (t
   const tables = f.runtime.db
     .prepare("SELECT name,sql FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")
     .all();
-  assert.equal(tables.length, 7);
+  assert.equal(tables.length, 11);
+  assert.deepEqual(columns("characters"), [
+    "id",
+    "name",
+    "tagline",
+    "persona",
+    "appearance",
+    "memory",
+    "avatar",
+    "cover",
+    "model_id",
+    "posting",
+    "created_at",
+    "updated_at",
+    "next_post_at",
+  ]);
+  assert.deepEqual(columns("character_messages"), [
+    "id",
+    "character_id",
+    "role",
+    "body",
+    "image",
+    "post_id",
+    "created_at",
+  ]);
+  assert.deepEqual(columns("posts"), [
+    "id",
+    "character_id",
+    "body",
+    "images",
+    "photo_prompt",
+    "mood",
+    "location",
+    "liked",
+    "created_at",
+  ]);
+  assert.deepEqual(columns("post_comments"), ["id", "post_id", "author", "body", "created_at"]);
   assert.deepEqual(columns("metering"), [
     "id",
     "session_id",
@@ -367,8 +403,9 @@ test("业务表与计量表字段、路由、鉴权、分页和删除", async (t
   assert.equal(c.api.token, undefined);
   assert.equal((await f.request("/api/config", "PUT", { api: { token: "bad" } })).status, 400);
   assert.equal((await f.request("/api/config", "PUT", { keep: 0 })).status, 400);
-  assert.equal((await f.request("/api/config", "PUT", { run_timeout: 30 })).status, 200);
-  assert.equal(JSON.parse(await fs.readFile(f.p.config)).run_timeout, 30);
+  assert.equal((await f.request("/api/config", "PUT", { run_timeout: 30 })).status, 400);
+  assert.equal((await f.request("/api/config", "PUT", { timeout: 30 })).status, 200);
+  assert.equal(JSON.parse(await fs.readFile(f.p.config)).timeout, 30);
   f.runtime.db
     .prepare("INSERT INTO compactions(session_id,through_id,summary,created_at) VALUES(?,?,?,?)")
     .run(id, 1, "摘要", Date.now());

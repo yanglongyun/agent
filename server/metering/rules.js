@@ -93,4 +93,53 @@ export default [
     checked: "2026-11-10",
     rates: [{ through: null, input: 4, output: 20, cached: 0.2, write: 5, write_long: 8 }],
   },
+  {
+    model: "gemini-4-hydrogen",
+    protocols: ["chat-completions"],
+    reference: "https://ai.google.dev/gemini-api/docs/pricing",
+    currency: "USD",
+    checked: "2026-11-15",
+    // Gemini 只支持隐式缓存，没有缓存写入费；思考 token 计入输出价。
+    rates: [{ through: null, input: 1.5, output: 7.5, cached: 0.075, write: 0, write_long: 0 }],
+  },
+  {
+    model: "gemini-4-carbon",
+    protocols: ["chat-completions"],
+    reference: "https://ai.google.dev/gemini-api/docs/pricing",
+    currency: "USD",
+    checked: "2026-11-15",
+    // 官方 2026-12-01 起价格翻倍；只有隐式缓存，没有缓存写入费。
+    rates: [
+      {
+        from: "2026-12-01T00:00:00Z",
+        through: null,
+        input: 4,
+        output: 20,
+        cached: 0.2,
+        write: 0,
+        write_long: 0,
+      },
+      { through: null, input: 2, output: 10, cached: 0.1, write: 0, write_long: 0 },
+    ],
+  },
+  {
+    model: "gemini-4-argon",
+    protocols: ["chat-completions"],
+    reference: "https://ai.google.dev/gemini-api/docs/pricing",
+    currency: "USD",
+    checked: "2026-11-15",
+    // 官方 2026-12-01 起价格翻倍；只有隐式缓存，没有缓存写入费。
+    rates: [
+      {
+        from: "2026-12-01T00:00:00Z",
+        through: null,
+        input: 4,
+        output: 20,
+        cached: 0.2,
+        write: 0,
+        write_long: 0,
+      },
+      { through: null, input: 2, output: 10, cached: 0.1, write: 0, write_long: 0 },
+    ],
+  },
 ];

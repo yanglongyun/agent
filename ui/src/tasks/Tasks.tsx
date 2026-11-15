@@ -108,81 +108,93 @@ export function useSessionActivity(sessionId: string, busy: boolean): SessionAct
   };
 }
 
+// 后台任务（子 Agent）与后台命令各是一个独立弹窗，由标题栏右上角的两个入口分别打开。
 export function TasksSheet({
+  kind,
   activity,
   onClose,
 }: {
+  kind: "agent" | "shell";
   activity: SessionActivity;
   onClose: () => void;
 }) {
   const [selected, setSelected] = useState<{ id: string; kind: "agent" | "shell" } | null>(null);
-  const { tasks, processes, error, runningCount, totalCost, updateTask, updateProcess } = activity;
-  let subtitle = "暂无活动任务或后台命令";
-  if (tasks.length || processes.length) {
+  const { tasks, processes, error, totalCost, updateTask, updateProcess } = activity;
+  const agent = kind === "agent";
+  const count = agent ? tasks.length : processes.length;
+  const runningCount = agent ? tasks.filter(active).length : processes.filter(active).length;
+  let subtitle = "";
+  if (count > 0) {
     const statusText = runningCount > 0 ? `${runningCount} 项执行中` : "全部已结束";
-    subtitle = tasks.length > 0 ? `${statusText} · ${costLabel(totalCost)}` : statusText;
+    subtitle = agent ? `${statusText} · ${costLabel(totalCost)}` : statusText;
   }
 
   return (
     <>
-      <Sheet title="任务与后台命令" className="wide" onClose={onClose}>
+      <Sheet title={agent ? "后台任务" : "后台命令"} className="wide" onClose={onClose}>
         {error && <p className="sheet-error">{error}</p>}
-        {!tasks.length && !processes.length ? (
+        {count === 0 ? (
           <div className="empty">
-            <Icon name="terminal" size={24} />
-            <strong>还没有任务</strong>
-            <span>这个对话委派的子任务和后台命令会出现在这里。</span>
+            <Icon name={agent ? "bot" : "terminal"} size={24} />
+            <strong>{agent ? "还没有后台任务" : "还没有后台命令"}</strong>
+            <span>
+              {agent
+                ? "这个对话委派的子 Agent 任务会出现在这里。"
+                : "这个对话启动的后台命令会出现在这里。"}
+            </span>
           </div>
         ) : (
           <>
             <p className="sheet-note tasks-sub">{subtitle}</p>
             <ul className="card tasks-list">
-              {tasks.map((task) => (
-                <li key={task.id}>
-                  <button
-                    type="button"
-                    className="task-open"
-                    onClick={() => setSelected({ id: task.id, kind: "agent" })}
-                  >
-                    <span className="task-icon">
-                      <Icon name="bot" size={16} />
-                    </span>
-                    <span className="task-main">
-                      <span className="task-title clip">{task.task}</span>
-                      <span className="task-sub clip">
-                        子 Agent · {task.model} · {costLabel(task)}
+              {agent &&
+                tasks.map((task) => (
+                  <li key={task.id}>
+                    <button
+                      type="button"
+                      className="task-open"
+                      onClick={() => setSelected({ id: task.id, kind: "agent" })}
+                    >
+                      <span className="task-icon">
+                        <Icon name="bot" size={16} />
                       </span>
-                    </span>
-                    <span className={`badge ${statusTone(task.status)}`}>
-                      {labels[task.status]}
-                    </span>
-                    <Icon name="chev" size={14} />
-                  </button>
-                </li>
-              ))}
-              {processes.map((record) => (
-                <li key={record.id}>
-                  <button
-                    type="button"
-                    className="task-open"
-                    onClick={() => setSelected({ id: record.id, kind: "shell" })}
-                  >
-                    <span className="task-icon">
-                      <Icon name="terminal" size={16} />
-                    </span>
-                    <span className="task-main">
-                      <span className="task-title mono clip">{record.command}</span>
-                      <span className="task-sub clip">
-                        后台命令{record.exit_code !== null ? ` · 退出码 ${record.exit_code}` : ""}
+                      <span className="task-main">
+                        <span className="task-title clip">{task.task}</span>
+                        <span className="task-sub clip">
+                          子 Agent · {task.model} · {costLabel(task)}
+                        </span>
                       </span>
-                    </span>
-                    <span className={`badge ${statusTone(record.status)}`}>
-                      {labels[record.status]}
-                    </span>
-                    <Icon name="chev" size={14} />
-                  </button>
-                </li>
-              ))}
+                      <span className={`badge ${statusTone(task.status)}`}>
+                        {labels[task.status]}
+                      </span>
+                      <Icon name="chev" size={14} />
+                    </button>
+                  </li>
+                ))}
+              {!agent &&
+                processes.map((record) => (
+                  <li key={record.id}>
+                    <button
+                      type="button"
+                      className="task-open"
+                      onClick={() => setSelected({ id: record.id, kind: "shell" })}
+                    >
+                      <span className="task-icon">
+                        <Icon name="terminal" size={16} />
+                      </span>
+                      <span className="task-main">
+                        <span className="task-title mono clip">{record.command}</span>
+                        <span className="task-sub clip">
+                          后台命令{record.exit_code !== null ? ` · 退出码 ${record.exit_code}` : ""}
+                        </span>
+                      </span>
+                      <span className={`badge ${statusTone(record.status)}`}>
+                        {labels[record.status]}
+                      </span>
+                      <Icon name="chev" size={14} />
+                    </button>
+                  </li>
+                ))}
             </ul>
           </>
         )}

@@ -9,6 +9,7 @@ import "./thread/thread.css";
 import "./tasks/tasks.css";
 import "./logs/logs.css";
 import "./notes/notes.css";
+import "./companion/companion.css";
 import "./settings/settings.css";
 import "./styles/app.css";
 import "./styles/touch.css";

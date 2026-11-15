@@ -199,7 +199,7 @@ usage 是模型返回的原始用量对象，不挑字段、不估算，也不�
 
 done 是整次运行的最后一个事件，只发一次。正常 completed 省略 stopReason。取消通常只发 aborted done，不额外发 error。
 
-Agent 不限制工具循环轮数。现有 API 的整次回复超时配置仍然生效，超时按 incomplete 处理。
+Agent 不限制工具循环轮数，也不设整次回复的时间上限，只由取消信号终止。
 
 ## 9. error
 
@@ -218,7 +218,6 @@ code 为可识别的错误代码，error 为说明文字。常见代码：
 | invalid_response                         | 返回状态或 output 无效                                                    |
 | model_failed                             | 上游失败事件没有提供更具体代码                                            |
 | compact_error / model_error / tool_error | 相应阶段异常没有提供更具体代码                                            |
-| timeout                                  | 请求或整次回复超时                                                        |
 | api_error                                | API 层异常没有提供更具体代码                                              |
 
 上游或本地异常提供更具体的 code 时可能沿用该代码；这不是封闭枚举。
@@ -318,7 +317,7 @@ done                   completed
 ## 当前配置与文件生命周期
 
 - `context_window` 非零时，`compact_at` 必须小于它；模型请求前比较计量模块读取的上次实际上下文计数与阈值，不估算。开启 compact_on_cache_expiry 后，也比较 lastResponseAt 与 cache_ttl；它使用配置的有效期，不是厂商返回的精确失效时刻。摘要保存后清空旧响应用量和时间，工具循环的每次响应刷新该时间。
-- 整轮由业务层 `run_timeout` 和取消信号控制，AI 模块不另设隐藏超时；单独调用 AI 时由调用方传入 signal。
+- 整轮只由取消信号控制，业务层和 AI 模块都不设超时；单独调用 AI 时由调用方传入 signal。
 - 图片快照在本轮成功提交后归属于会话；取消或失败清理未提交的图片，删除会话清理已保存图片。
 - 前端读取 messages 与 compactions，按消息 ID 排列历史、按 call_id 合并工具结果。
 

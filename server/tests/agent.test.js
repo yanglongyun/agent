@@ -349,41 +349,25 @@ test("完整模型块原样交付，usage 先于工具执行，循环直接使�
   assert.equal(messages.length, 5);
 });
 
-test("取消只发送一个 aborted done；超时发送 error 和 incomplete done", async (t) => {
+test("取消只发送一个 aborted done", async (t) => {
   let requests = 0;
   const url = await modelServer(t, () => {
     requests++;
     return { output: [] };
   });
-  for (const reason of [
-    new DOMException("取消", "AbortError"),
-    new DOMException("超时", "TimeoutError"),
-  ]) {
-    const controller = new AbortController();
-    controller.abort(reason);
-    const received = [];
-    await run({
-      instructions: "测试指令 {{原样保留}}",
-      model: "fixture-model",
-      compactModel: "summary-model",
-      messages: [],
-      config: { ...defaults(), url, key: "test" },
-      signal: controller.signal,
-      onEvent: (event) => received.push(event),
-    });
-    assert.equal(received.filter((event) => event.type === "done").length, 1);
-    if (reason.name === "AbortError") {
-      assert.deepEqual(received, [{ type: "done", status: "aborted", stopReason: "aborted" }]);
-    } else {
-      assert.equal(received[0].type, "error");
-      assert.equal(received[0].code, "timeout");
-      assert.deepEqual(received.at(-1), {
-        type: "done",
-        status: "incomplete",
-        stopReason: "timeout",
-      });
-    }
-  }
+  const controller = new AbortController();
+  controller.abort(new DOMException("取消", "AbortError"));
+  const received = [];
+  await run({
+    instructions: "测试指令 {{原样保留}}",
+    model: "fixture-model",
+    compactModel: "summary-model",
+    messages: [],
+    config: { ...defaults(), url, key: "test" },
+    signal: controller.signal,
+    onEvent: (event) => received.push(event),
+  });
+  assert.deepEqual(received, [{ type: "done", status: "aborted", stopReason: "aborted" }]);
   assert.equal(requests, 0);
 });
 

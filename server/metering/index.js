@@ -127,7 +127,7 @@ export default function measure(usage, { protocol, model, url, serviceTier, at =
   let writes = 0;
   let longWrites = 0;
   let input = ordinary;
-  const output = chat ? usage.completion_tokens : usage.output_tokens;
+  let output = chat ? usage.completion_tokens : usage.output_tokens;
   let multiplier = 1;
   if (protocol === "responses" || chat) {
     const details = chat ? usage.prompt_tokens_details : usage.input_tokens_details;
@@ -175,14 +175,24 @@ export default function measure(usage, { protocol, model, url, serviceTier, at =
       return { ...measurement, status: "unsupported_tier" };
     }
   }
+  // 部分厂商（如 Gemini）把思考 token 只记入 total_tokens；输出按 total − prompt 计费，避免少算。
+  if (chat && count(output) && count(usage.total_tokens) && count(usage.prompt_tokens)) {
+    output = Math.max(output, usage.total_tokens - usage.prompt_tokens);
+  }
   if (![ordinary, reads, writes, longWrites, output, input].every(count)) {
     return { ...measurement, status: "invalid_usage" };
   }
   const period = periodOf(rule, at);
-  const rates = rule.rates.find(
-    (entry) =>
-      (entry.period ?? null) === period && (entry.through === null || input <= entry.through),
-  );
+  // 同一时段可能有多个价格档；取已生效且起始日期最新的一档，支持官方按日期调价。
+  const start = (entry) => (entry.from ? Date.parse(entry.from) : 0);
+  const rates = rule.rates
+    .filter(
+      (entry) =>
+        (entry.period ?? null) === period &&
+        (!entry.from || at >= start(entry)) &&
+        (entry.through === null || input <= entry.through),
+    )
+    .sort((a, b) => start(b) - start(a))[0];
   if (!rates) {
     return measurement;
   }

@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { buildRows, mergeMessages, type RawMessage } from "../src/thread/thread";
+import { buildBlocks } from "../src/thread/blocks";
 import { checkAuth, logout, useAuth } from "../src/lib/auth";
 import {
   send,
@@ -157,6 +158,124 @@ test("跨页调用与结果合并成一行，刷新保持稳定标识，文件 e
   };
   assert.equal(buildRows([call, failed])[0].failed, true);
 });
+function textItem(role: "user" | "assistant", text: string, id: number): RawMessage {
+  return {
+    id,
+    created_at: 1_000 * id,
+    item: {
+      type: "message",
+      role,
+      content: [{ type: role === "user" ? "input_text" : "output_text", text }],
+    },
+  };
+}
+function toolPair(callId: string, id: number): RawMessage[] {
+  return [
+    {
+      id,
+      created_at: 1_000 * id,
+      item: {
+        type: "function_call",
+        call_id: callId,
+        name: "shell",
+        arguments: '{"command":"ls"}',
+      },
+    },
+    {
+      id: id + 1,
+      created_at: 1_000 * (id + 1),
+      item: {
+        type: "function_call_output",
+        call_id: callId,
+        output: JSON.stringify({ success: true, text: "ok" }),
+      },
+    },
+  ];
+}
+const usageOf = (message: RawMessage): RawMessage => ({
+  ...message,
+  usage: { total_tokens: 10 },
+});
+
+test("对话区块：运行中过程平铺，完成后收进折叠条，最终回答留在外面", () => {
+  const messages: RawMessage[] = [
+    textItem("user", "做点事", 1),
+    {
+      id: 2,
+      created_at: 2_000,
+      item: { type: "reasoning", summary: [{ type: "summary_text", text: "想想" }] },
+    },
+    ...toolPair("c1", 3),
+    textItem("assistant", "先看了目录", 5),
+    ...toolPair("c2", 6),
+    usageOf(textItem("assistant", "做完了", 8)),
+  ];
+  const shape = (blocks: ReturnType<typeof buildBlocks>) =>
+    blocks.map((block) => (block.kind === "message" ? `${block.row.kind}` : block.kind));
+
+  // 运行中：思考和工具按顺序平铺，中间正文独立成消息，没有折叠条。
+  const live = buildBlocks(buildRows(messages.slice(0, 7), [], true), true);
+  assert.deepEqual(shape(live), ["day", "user", "flat", "assistant", "flat"]);
+  const flat = live.find((block) => block.kind === "flat");
+  assert.deepEqual(flat?.kind === "flat" ? flat.items.map((item) => item.kind) : [], [
+    "think",
+    "tool",
+  ]);
+
+  // 完成后：过程（含中间正文）进同一条折叠条，最终回答在外面，用量挂在最终回答上。
+  const done = buildBlocks(buildRows(messages), false);
+  assert.deepEqual(shape(done), ["day", "user", "turn", "assistant"]);
+  const turn = done.find((block) => block.kind === "turn");
+  assert.deepEqual(turn?.kind === "turn" ? turn.items.map((item) => item.kind) : [], [
+    "think",
+    "tool",
+    "text",
+    "tool",
+  ]);
+  assert.ok(turn?.kind === "turn" && turn.durationMs === 7_000);
+  const final = done.at(-1);
+  assert.ok(final?.kind === "message" && final.final === true);
+  assert.equal(final?.kind === "message" ? final.usage?.length : 0, 1);
+  // 用量只挂在最终回答上，不进过程条目。
+  for (const block of done) {
+    if (block.kind === "turn" || block.kind === "flat") {
+      assert.ok(block.items.every((item) => item.row.kind !== "usage"));
+    }
+  }
+});
+
+test("对话区块：最终回答的标识在运行中与完成后保持一致，没有最终回答时过程仍平铺", () => {
+  const answer = textItem("assistant", "结果", 5);
+  const base: RawMessage[] = [textItem("user", "问", 1), ...toolPair("c1", 2)];
+  const live = buildBlocks(buildRows([...base, answer], [], true), true);
+  const done = buildBlocks(buildRows([...base, answer]), false);
+  const liveKey = live.find(
+    (block) => block.kind === "message" && block.row.kind === "assistant",
+  )?.key;
+  const doneKey = done.find(
+    (block) => block.kind === "message" && block.row.kind === "assistant",
+  )?.key;
+  assert.ok(liveKey);
+  assert.equal(liveKey, doneKey);
+
+  // 中途停止：只有过程没有最终回答，工具仍然显示在对话里，不被折叠隐藏。
+  const stopped = buildBlocks(buildRows(base), false);
+  assert.deepEqual(
+    stopped.map((block) => block.kind),
+    ["day", "message", "flat"],
+  );
+
+  // 没有过程的一轮不产生折叠条。
+  const plain = buildBlocks(
+    buildRows([textItem("user", "问", 1), textItem("assistant", "答", 2)]),
+    false,
+  );
+  assert.deepEqual(
+    plain.map((block) => block.kind),
+    ["day", "message", "message"],
+  );
+});
+
 test("压缩记录按覆盖位置显示，加载更早历史后不重复", () => {
   const summaries = [{ id: 1, through_id: 2, summary: "摘要", created_at: 10 }];
   const last: RawMessage = {
@@ -1529,11 +1648,11 @@ test("应用面板：按地址判断当前应用，未知页面不属于任何�
   assert.equal(appForPath("/nope").id, "chat");
   assert.deepEqual(
     apps.map((app) => app.id),
-    ["chat", "notes", "logs", "settings"],
+    ["chat", "companion", "notes", "logs", "settings"],
   );
 
   const chat = apps[0];
-  const logs = apps[2];
+  const logs = apps[3];
   assert.equal(launchPath(chat), "/");
   rememberLocation("/sessions/abc");
   rememberLocation("/logs/session/xyz?x=1");
@@ -1541,9 +1660,10 @@ test("应用面板：按地址判断当前应用，未知页面不属于任何�
   rememberLocation("/nope");
   assert.equal(launchPath(chat), "/sessions/abc");
   assert.equal(launchPath(logs), "/logs/session/xyz?x=1");
-  assert.equal(launchPath(apps[1]), "/notes/abc");
+  assert.equal(launchPath(apps[2]), "/notes/abc");
+  assert.equal(matchApp("/characters/abc/moments")?.id, "companion");
   // 404 页不会覆盖任何应用的记忆。
-  assert.equal(launchPath(apps[3]), "/settings");
+  assert.equal(launchPath(apps[4]), "/settings");
 });
 
 test("记事本：标题为空时显示未命名，预览压平空白，时间只显示今天或日期", () => {

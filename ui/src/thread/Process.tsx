@@ -1,13 +1,13 @@
 // 过程体系:思考 / 工具各是一行(图标位悬停换 chevron,展开转 90°),
-// 相邻的已完成工具收成一行摘要。主对话不直接显示过程,只在回答的「更多 → 执行过程」
-// 弹窗和子任务详情里出现;运行中的工具标签走扫光。
+// 相邻的已完成工具收成一行摘要;运行中的工具标签走扫光。
+// 一轮进行中,过程直接平铺在对话里;一轮完成后收进「已工作 Xs」折叠条(TurnCollapse),
+// 最终回答留在外面。子任务详情用同一套行组件。
 import { type ReactNode } from "react";
 
 import { Icon } from "../icons/Icon";
-import { fmtArgs, fmtResult, isFailed, renderMd, toolMeta } from "./format";
+import { fmtArgs, fmtResult, formatDuration, isFailed, renderMd, toolMeta } from "./format";
 import { useThread } from "./store";
 import type { Row } from "./thread";
-import { Usage } from "./Usage";
 
 // 展开状态属于当前会话，列表分组和刷新不会丢失。
 function useExpanded(key: string): [boolean, (open: boolean) => void] {
@@ -19,7 +19,7 @@ function useExpanded(key: string): [boolean, (open: boolean) => void] {
 
 /** 一轮里按序排布的条目:过程(思考 / 工具)与中间文本。 */
 export type TurnEntry = {
-  kind: "think" | "tool" | "text" | "usage";
+  kind: "think" | "tool" | "text";
   row: Row;
 };
 
@@ -184,6 +184,41 @@ export function ToolGroup({ rows }: { rows: Row[] }) {
   );
 }
 
+/* ── 轮折叠条:一行标签 + chevron,下面一条通栏细线;展开后是这一轮的全部过程 ── */
+
+export function TurnCollapse({
+  id,
+  durationMs,
+  children,
+}: {
+  id: string;
+  durationMs: number | null;
+  children: ReactNode;
+}) {
+  const [open, setOpen] = useExpanded(`turn:${id}`);
+  const label =
+    durationMs != null && durationMs > 0 ? `已工作 ${formatDuration(durationMs)}` : "已工作";
+  return (
+    <div className={`turn${open ? " open" : ""}`}>
+      <button
+        type="button"
+        className="turn-head"
+        aria-expanded={open}
+        onClick={() => setOpen(!open)}
+      >
+        <span className="turn-row">
+          <span className="turn-label">{label}</span>
+          <span className="turn-chev">
+            <Icon name="chev" size={12} />
+          </span>
+        </span>
+        <span className="turn-line" />
+      </button>
+      {open && <div className="turn-body">{children}</div>}
+    </div>
+  );
+}
+
 /* ── 有序渲染一串条目:过程做相邻分组,中间文本按 markdown 平铺 ──
    inFold=true 时条目裸排(外层容器自带 gap);否则每条包一层消息行。 */
 
@@ -218,9 +253,7 @@ export function TurnEntries({ items, inFold }: { items: TurnEntry[]; inFold?: bo
       continue;
     }
     flushTools();
-    if (item.kind === "usage" && item.row.usageRecord) {
-      nodes.push(<Usage key={item.row.key} records={[item.row.usageRecord]} />);
-    } else if (item.kind === "think") {
+    if (item.kind === "think") {
       nodes.push(<ThinkItem key={`t:${item.row.key}`} row={item.row} />);
     } else {
       nodes.push(

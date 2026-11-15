@@ -1,5 +1,7 @@
 import { useEffect } from "react";
 import { Link, Navigate, Route, Routes, useLocation } from "react-router";
+import { ChatView } from "./companion/ChatView";
+import { MomentsView } from "./companion/MomentsView";
 import { Icon } from "./icons/Icon";
 import { useAuth } from "./lib/auth";
 import { LogsOverview } from "./logs/LogsOverview";
@@ -72,6 +74,9 @@ export function AppRoutes() {
         <Route path="/logs" element={<LogsOverview />} />
         <Route path="/logs/overview" element={<LogsOverview />} />
         <Route path="/logs/:kind/:id" element={<OwnerDetail />} />
+        <Route path="/characters" element={<MomentsView />} />
+        <Route path="/characters/:id" element={<ChatView />} />
+        <Route path="/characters/:id/moments" element={<MomentsView />} />
         <Route path="/notes" element={<NotesView />} />
         <Route path="/notes/:id" element={<NotesView />} />
         <Route path="/settings" element={<Settings />} />

@@ -59,10 +59,6 @@ export function createTaskManager(db, locations) {
   }
 
   async function execute(task, config, controller) {
-    const timer = setTimeout(
-      () => controller.abort(new DOMException("任务超时", "TimeoutError")),
-      config.run_timeout * 1000,
-    );
     const cancellation = setInterval(() => {
       const current = db.prepare("SELECT status FROM tasks WHERE id = ?").get(task.id);
       if (current?.status === "cancelling") {
@@ -120,7 +116,6 @@ export function createTaskManager(db, locations) {
       status = controller.signal.aborted ? "cancelled" : "failed";
       errorText = error.message;
     } finally {
-      clearTimeout(timer);
       clearInterval(cancellation);
       for (const url of taskConfig.run_images) {
         await fs
@@ -130,7 +125,7 @@ export function createTaskManager(db, locations) {
       // 父任务失败或停止时，不能留下继续运行的后代任务。
       await cancelChildren({ sessionId: task.session_id, taskId: task.id });
       await shell.cancelScope({ sessionId: task.session_id, taskId: task.id });
-      if (controller.signal.aborted && controller.signal.reason?.name !== "TimeoutError") {
+      if (controller.signal.aborted) {
         status = "cancelled";
       }
       // 完整清理后才公布终态，读取方此时可以安全地交接或删除任务。

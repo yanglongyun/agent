@@ -6,7 +6,7 @@ import { StageHead } from "../shell/heads";
 import { Composer } from "./Composer";
 import { MessageStream } from "./MessageStream";
 import { Starters } from "./Starters";
-import { ThreadMenu } from "./ThreadMenu";
+import { ThreadActions } from "./ThreadActions";
 import { createDraft, openThread, threadTitle, useThread } from "./store";
 
 export function ThreadView() {
@@ -27,7 +27,7 @@ export function ThreadView() {
   return (
     <section className={`stage thread${blank ? " is-blank" : ""}`}>
       <StageHead title={title}>
-        <ThreadMenu />
+        <ThreadActions />
       </StageHead>
       {loadError ? (
         <main className="route-error">

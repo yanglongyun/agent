@@ -159,16 +159,6 @@
   gap: 2px;
   align-items: center;
   margin: 6px 0 0 -6px;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 0.16s;
-}
-.msg:hover .act-row,
-.msg:focus-within .act-row,
-.act-row:has([data-state="open"]),
-.act-row.always {
-  opacity: 1;
-  pointer-events: auto;
 }
 .act {
   width: 28px;
@@ -185,6 +175,10 @@
 .act[data-state="open"] {
   background: var(--tint-2);
   color: var(--text-1);
+}
+.act:disabled {
+  opacity: 0.4;
+  pointer-events: none;
 }
 .working {
   display: inline-flex;
@@ -857,10 +851,10 @@
 }
 
 /* ── 顶栏菜单与模型选择 ── */
-.more-btn {
+.has-dot {
   position: relative;
 }
-.more-dot {
+.icon-dot {
   position: absolute;
   top: 6px;
   right: 6px;
@@ -871,12 +865,6 @@
   background: var(--ok);
   box-sizing: content-box;
   animation: breathe 1.6s ease-in-out infinite;
-}
-.thread-more-menu {
-  width: min(250px, calc(100vw - 24px));
-}
-.msg-more-menu {
-  width: min(210px, calc(100vw - 24px));
 }
 .model-options {
   width: min(320px, calc(100vw - 24px));
@@ -906,15 +894,32 @@
   color: var(--accent);
 }
 
-/* ── 执行过程（弹窗和子任务详情里） ── */
-.process-list {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
+/* ── 执行过程（对话里平铺、折叠条里、子任务详情里） ── */
 .sheet-well {
   max-height: 360px;
   margin-top: 14px;
+}
+.usage-cost {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+  margin-bottom: 12px;
+}
+.usage-cost-label {
+  color: var(--text-3);
+  font-size: 12.5px;
+}
+.usage-cost-amount {
+  color: var(--accent-text);
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
+}
+.usage-cost-note {
+  color: var(--text-4);
+  font-size: 12px;
 }
 .step {
   width: 100%;
@@ -1026,6 +1031,69 @@
 }
 .step.sm > .step-head {
   font-size: 12.5px;
+}
+
+/* ── 轮折叠条：「已工作 Xs」一行标签 + 通栏细线，展开后是这一轮的全部过程 ── */
+.turn {
+  width: 100%;
+  min-width: 0;
+}
+.turn-head {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+  padding: 0;
+  text-align: left;
+}
+.turn-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 2px 0;
+}
+.turn-label {
+  flex: none;
+  color: var(--text-4);
+  font-size: 13px;
+  line-height: 20px;
+  transition: color 0.15s;
+}
+.turn-chev {
+  display: grid;
+  place-items: center;
+  flex: none;
+  color: var(--text-4);
+  transition:
+    color 0.15s,
+    transform 0.18s;
+}
+.turn-head:hover .turn-label,
+.turn-head:hover .turn-chev,
+.turn.open .turn-label,
+.turn.open .turn-chev {
+  color: var(--text-2);
+}
+.turn.open .turn-chev {
+  transform: rotate(90deg);
+}
+.turn-line {
+  width: 100%;
+  height: 1px;
+  border-radius: var(--r-full);
+  background: var(--edge);
+}
+.turn-body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  padding-top: 8px;
+}
+.turn-body .md {
+  width: 100%;
+  padding: 4px 0;
 }
 .answer-usage {
   max-width: 100%;

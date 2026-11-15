@@ -184,3 +184,37 @@ test("时间型规则的输入输出按所选时段单价计费", () => {
   assert.equal(measure(usage, { ...deepseek, at: Date.UTC(2026, 10, 16, 2, 0) }).cost.amount, 1.5);
   assert.equal(measure(usage, { ...deepseek, at: Date.UTC(2026, 10, 16, 5, 0) }).cost.amount, 0.75);
 });
+
+test("Gemini 4 系列按官方标价计费，思考 token 计入输出，碳与氩 12 月 1 日起涨价", () => {
+  const gemini = (model) => ({
+    ...target,
+    model,
+    protocol: "chat-completions",
+    url: "https://llm.wisehood.ai/gemini/v1beta/openai/chat/completions",
+  });
+  // 思考 token 只体现在 total_tokens：1000 + 100 之外多出 200。
+  const usage = {
+    prompt_tokens: 1000,
+    prompt_tokens_details: { cached_tokens: 400 },
+    completion_tokens: 100,
+    total_tokens: 1300,
+  };
+  const nov = Date.UTC(2026, 10, 15, 12, 0);
+  const hydrogen = measure(usage, { ...gemini("gemini-4-hydrogen"), at: nov });
+  assert.equal(hydrogen.cost.amount, 0.00318);
+  assert.equal(hydrogen.cost.rule_date, "2026-11-15");
+  assert.deepEqual(
+    hydrogen.cost.units.map((unit) => unit.tokens),
+    [600, 300, 400, 0, 0],
+  );
+  assert.equal(measure(usage, { ...gemini("gemini-4-carbon"), at: nov }).cost.amount, 0.00424);
+  assert.equal(
+    measure(usage, { ...gemini("gemini-4-carbon"), at: Date.UTC(2026, 11, 1, 0, 0) }).cost.amount,
+    0.00848,
+  );
+  assert.equal(measure(usage, { ...gemini("gemini-4-argon"), at: nov }).cost.amount, 0.00424);
+  // 没有 total_tokens 时仍按 completion_tokens 计费，不改写厂商用量。
+  const plain = { prompt_tokens: 100, completion_tokens: 10 };
+  assert.equal(measure(plain, { ...gemini("gemini-4-hydrogen"), at: nov }).cost.amount, 0.000225);
+  assert.deepEqual(plain, { prompt_tokens: 100, completion_tokens: 10 });
+});

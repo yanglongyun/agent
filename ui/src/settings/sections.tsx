@@ -8,6 +8,7 @@ export const sections: Array<{ id: string; name: string; icon: IconName }> = [
   { id: "instructions", name: "指令", icon: "doc" },
   { id: "compression", name: "上下文压缩", icon: "shrink" },
   { id: "execution", name: "执行环境", icon: "terminal" },
+  { id: "image", name: "生图", icon: "image" },
   { id: "appearance", name: "外观", icon: "palette" },
   { id: "service", name: "服务", icon: "server" },
   { id: "about", name: "关于", icon: "info" },

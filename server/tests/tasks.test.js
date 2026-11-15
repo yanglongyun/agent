@@ -516,23 +516,8 @@ test("每会话最多八个并发任务，停止会话也会取消通过 API 单
   assert.ok(rows.every((row) => row.status === "cancelled"));
 });
 
-test("任务独立超时，失去执行进程的任务标记为中断", async (t) => {
-  const f = await fixture(t, async (_request, _emit, signal) => {
-    await new Promise((resolve) => signal.addEventListener("abort", resolve, { once: true }));
-    return answer("超时后不保存");
-  });
-  assert.equal((await f.request("/api/config", "PUT", { run_timeout: 1 })).status, 200);
-  const task = await (
-    await f.request("/api/tasks", "POST", { session_id: f.session.id, task: "timeout task" })
-  ).json();
-  await until(
-    () =>
-      f.runtime.db.prepare("SELECT status FROM tasks WHERE id = ?").get(task.task_id).status ===
-      "failed",
-  );
-  const timed = await (await f.request(`/api/tasks/${task.task_id}`)).json();
-  assert.ok(timed.error.includes("超时"));
-  assert.equal(timed.request_count, 0);
+test("失去执行进程的任务标记为中断", async (t) => {
+  const f = await fixture(t, async () => answer("完成"));
   f.runtime.db
     .prepare(
       "INSERT INTO tasks (id, session_id, status, worker_pid, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",

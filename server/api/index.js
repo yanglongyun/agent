@@ -10,6 +10,9 @@ import processes from "./processes/index.js";
 import tasks from "./tasks/index.js";
 import events from "./events/index.js";
 import logs from "./logs/index.js";
+import characters from "./characters/index.js";
+import posts from "./posts/index.js";
+import { createCompanions } from "../characters.js";
 import { createEvents } from "../events.js";
 import { createTaskManager } from "../tasks.js";
 import { fail } from "./http.js";
@@ -19,6 +22,13 @@ export default function createApi(context) {
   context.replies = new Map();
   context.events = createEvents();
   context.tasks = createTaskManager(context.db, context.paths);
+  context.companions = createCompanions(
+    context.db,
+    context.paths,
+    () => context.config,
+    context.events,
+  );
+  context.companions.start();
 
   async function route(req, res, parts) {
     const name = parts[0];
@@ -39,6 +49,10 @@ export default function createApi(context) {
         return sessions(req, res, rest, context);
       case "notes":
         return notes(req, res, rest, context);
+      case "characters":
+        return characters(req, res, rest, context);
+      case "posts":
+        return posts(req, res, rest, context);
       case "logs":
         return logs(req, res, rest, context);
       case "config":
@@ -61,6 +75,7 @@ export default function createApi(context) {
       request.controller.abort();
     }
     await context.tasks.close();
+    await context.companions.close();
     await Promise.all(requests.map((request) => request.done));
   }
 

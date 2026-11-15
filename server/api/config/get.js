@@ -12,9 +12,9 @@ export default async function get(req, res, context) {
     compact_system: config.compact_system,
     compact_prefix: config.compact_prefix,
     workdir: config.workdir,
-    run_timeout: config.run_timeout,
     timeout: config.timeout,
     max_output: config.max_output,
+    image: { url: config.image.url, model: config.image.model, key_set: Boolean(config.image.key) },
     api: { listen: config.api.listen },
     paths: {
       data_dir: context.paths.root,

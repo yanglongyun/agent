@@ -1,6 +1,8 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import { useEffect } from "react";
 import { Outlet, useLocation } from "react-router";
+import { CompanionPane } from "../companion/CompanionPane";
+import { Lightbox } from "../companion/Lightbox";
 import { LogsPane } from "../logs/LogsPane";
 import { NotesPane } from "../notes/NotesPane";
 import { SettingsPane } from "../settings/SettingsPane";
@@ -13,6 +15,8 @@ function paneFor(appId: string) {
   switch (appId) {
     case "logs":
       return <LogsPane />;
+    case "companion":
+      return <CompanionPane />;
     case "notes":
       return <NotesPane />;
     case "settings":
@@ -46,6 +50,7 @@ export function Frame() {
         </aside>
       )}
       <Outlet />
+      <Lightbox />
       <Dialog.Root
         open={narrow && shell.drawer}
         onOpenChange={(open) => {

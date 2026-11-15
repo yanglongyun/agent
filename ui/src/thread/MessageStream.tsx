@@ -1,4 +1,3 @@
-import * as Dropdown from "@radix-ui/react-dropdown-menu";
 import { useNavigate } from "react-router";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 
@@ -8,57 +7,35 @@ import { toast } from "../overlay/toast";
 import { Hint } from "../overlay/Hint";
 import { Sheet } from "../overlay/Sheet";
 import { AttachmentInfo } from "./AttachmentInfo";
-import { dayLabel, formatDuration, renderMd } from "./format";
+import { renderMd } from "./format";
 import { usageSummary } from "./metering";
-import { TurnEntries, Working, type TurnEntry } from "./Process";
+import { buildBlocks } from "./blocks";
+import { TurnCollapse, TurnEntries, Working } from "./Process";
 import { branchThread, loadOlder, retrySend, useThread } from "./store";
 import { buildRows, type Row, type UsageRecord } from "./thread";
 
-type Block =
-  | {
-      kind: "day";
-      key: string;
-      label: string;
-    }
-  | {
-      kind: "message";
-      key: string;
-      row: Row;
-      final?: boolean;
-      usage?: UsageRecord[];
-      process?: TurnEntry[];
-      durationMs?: number | null;
-    };
-
+// 每条回答下面直接显示三个图标：复制、从此处创建分支、用量与费用信息。
 function AssistantActions({
   row,
-  always,
   usage,
-  process,
-  durationMs,
   busy,
   branchingMessageId,
   onBranch,
   onOpenUsage,
-  onOpenProcess,
 }: {
   row: Row;
-  always: boolean;
   usage: UsageRecord[];
-  process: TurnEntry[];
-  durationMs: number | null;
   busy: boolean;
   branchingMessageId: number;
   onBranch: (messageId: number) => void;
   onOpenUsage: (records: UsageRecord[]) => void;
-  onOpenProcess: (items: TurnEntry[], durationMs: number | null) => void;
 }) {
   const messageId = row.messageId;
   const canBranch = messageId !== undefined && messageId > 0 && !row.streaming;
-  const hasMore = canBranch || usage.length > 0 || process.length > 0;
+  const branching = messageId !== undefined && branchingMessageId === messageId;
 
   return (
-    <div className={`act-row${always ? " always" : ""}`}>
+    <div className="act-row">
       <Hint text="复制回答">
         <button
           type="button"
@@ -72,50 +49,30 @@ function AssistantActions({
           <Icon name="copy" size={15} />
         </button>
       </Hint>
-      {hasMore && (
-        <Dropdown.Root>
-          <Dropdown.Trigger asChild>
-            <button type="button" className="act" aria-label="更多操作">
-              <Icon name="more" size={15} />
-            </button>
-          </Dropdown.Trigger>
-          <Dropdown.Portal>
-            <Dropdown.Content
-              className="dropdown-content msg-more-menu"
-              align="start"
-              sideOffset={6}
-              collisionPadding={12}
-            >
-              {canBranch && (
-                <Dropdown.Item
-                  className="dropdown-item"
-                  disabled={busy || branchingMessageId > 0}
-                  onSelect={() => onBranch(messageId)}
-                >
-                  <Icon name="branch" size={15} />
-                  <span>
-                    {branchingMessageId === messageId ? "正在创建分支…" : "从此处创建分支"}
-                  </span>
-                </Dropdown.Item>
-              )}
-              {usage.length > 0 && (
-                <Dropdown.Item className="dropdown-item" onSelect={() => onOpenUsage(usage)}>
-                  <Icon name="layers" size={15} />
-                  <span>用量与费用</span>
-                </Dropdown.Item>
-              )}
-              {process.length > 0 && (
-                <Dropdown.Item
-                  className="dropdown-item"
-                  onSelect={() => onOpenProcess(process, durationMs)}
-                >
-                  <Icon name="terminal" size={15} />
-                  <span>执行过程（{process.length} 步）</span>
-                </Dropdown.Item>
-              )}
-            </Dropdown.Content>
-          </Dropdown.Portal>
-        </Dropdown.Root>
+      {canBranch && (
+        <Hint text={branching ? "正在创建分支…" : "从此处创建分支"}>
+          <button
+            type="button"
+            className="act"
+            aria-label="从此处创建分支"
+            disabled={busy || branchingMessageId > 0}
+            onClick={() => onBranch(messageId)}
+          >
+            <Icon name="branch" size={15} />
+          </button>
+        </Hint>
+      )}
+      {usage.length > 0 && (
+        <Hint text="用量与费用">
+          <button
+            type="button"
+            className="act"
+            aria-label="用量与费用"
+            onClick={() => onOpenUsage(usage)}
+          >
+            <Icon name="info" size={15} />
+          </button>
+        </Hint>
       )}
     </div>
   );
@@ -149,10 +106,6 @@ export function MessageStream() {
   const innerRef = useRef<HTMLDivElement>(null);
 
   const [usageModal, setUsageModal] = useState<UsageRecord[] | null>(null);
-  const [processModal, setProcessModal] = useState<{
-    items: TurnEntry[];
-    durationMs: number | null;
-  } | null>(null);
   const [compactionModal, setCompactionModal] = useState<Row | null>(null);
 
   // 「粘底」:贴着底部时任何高度变化都跟着走;用户上滚就不打扰,滚回底部重新粘上
@@ -219,149 +172,25 @@ export function MessageStream() {
     restoreFromTop.current = null;
   }, [currentId, messages]);
 
-  const blocks = useMemo<Block[]>(() => {
-    const output: Block[] = [];
-    let lastDay = "";
-
-    let entries: TurnEntry[] = [];
-    let turnStartAt: number | undefined;
-    let turnLastAt: number | undefined;
-
-    const noteAt = (at?: number) => {
-      if (at) {
-        turnLastAt = at;
-      }
-    };
-
-    // 主对话只呈现对用户的消息回复；思考、工具调用与用量收进该回复的「更多」详情中。
-    const flushTurn = (live: boolean) => {
-      if (!entries.length) {
-        turnStartAt = undefined;
-        turnLastAt = undefined;
-        return;
-      }
-      const list = entries;
-      entries = [];
-
-      let finalIndex = -1;
-      for (let i = list.length - 1; i >= 0; i--) {
-        if (list[i].kind === "text" && !list[i].row.streaming) {
-          finalIndex = i;
-          break;
-        }
-      }
-      if (live || finalIndex < 0) {
-        for (const item of list) {
-          if (item.kind === "text" && item.row.content) {
-            output.push({
-              kind: "message",
-              key: item.row.key,
-              row: item.row,
-            });
-          }
-        }
-      } else {
-        const final = list[finalIndex];
-        const process = list.filter(
-          (entry, index) => index !== finalIndex && entry.kind !== "usage",
-        );
-        const usage = list
-          .filter((entry) => entry.kind === "usage" && entry.row.usageRecord)
-          .map((entry) => entry.row.usageRecord!);
-        const durationMs =
-          turnStartAt && turnLastAt && turnLastAt > turnStartAt ? turnLastAt - turnStartAt : null;
-        output.push({
-          kind: "message",
-          key: final.row.key,
-          row: final.row,
-          final: true,
-          usage,
-          process,
-          durationMs,
-        });
-      }
-      turnStartAt = undefined;
-      turnLastAt = undefined;
-    };
-
-    for (const row of rows) {
-      const day = dayLabel(row.at);
-      if (day && day !== lastDay) {
-        flushTurn(false);
-        output.push({
-          kind: "day",
-          key: `day:${row.key}`,
-          label: day,
-        });
-        lastDay = day;
-      }
-
-      if (row.kind === "user") {
-        flushTurn(false);
-        turnStartAt = row.at;
-        output.push({
-          kind: "message",
-          key: row.key,
-          row,
-        });
-        continue;
-      }
-      if (row.kind === "tool") {
-        entries.push({
-          kind: "tool",
-          row,
-        });
-        noteAt(row.at);
-        continue;
-      }
-      if (row.kind === "usage") {
-        entries.push({ kind: "usage", row });
-        continue;
-      }
-      if (row.kind === "assistant") {
-        if (row.reasoning) {
-          entries.push({
-            kind: "think",
-            row,
-          });
-        }
-        if (row.content) {
-          entries.push({
-            kind: "text",
-            row,
-          });
-        }
-        noteAt(row.at);
-        continue;
-      }
-      flushTurn(false);
-      output.push({
-        kind: "message",
-        key: row.key,
-        row,
-      });
-    }
-    flushTurn(busy);
-    return output;
-  }, [rows, busy]);
-
-  const lastFinalKey = useMemo(() => {
-    for (let i = blocks.length - 1; i >= 0; i--) {
-      const block = blocks[i];
-      if (block.kind === "message" && block.final) {
-        return block.key;
-      }
-    }
-    return "";
-  }, [blocks]);
+  const blocks = useMemo(() => buildBlocks(rows, busy), [rows, busy]);
 
   const showWorking = useMemo(() => {
     if (!busy) {
       return false;
     }
-    const last = rows[rows.length - 1];
-    // 只有当正文正在流式输出时才隐藏打字动画；工具执行或思考期间都展示打字气泡。
+    // 用量行跟在最后一项后面，判断时跳过。
+    let last: Row | undefined;
+    for (let i = rows.length - 1; i >= 0; i--) {
+      if (rows[i].kind !== "usage") {
+        last = rows[i];
+        break;
+      }
+    }
+    // 正文正在流式输出，或工具自己带着扫光时，不再额外显示「正在处理」。
     if (last && last.kind === "assistant" && last.streaming && last.content) {
+      return false;
+    }
+    if (last && last.kind === "tool" && last.status === "running") {
       return false;
     }
     return true;
@@ -472,6 +301,19 @@ export function MessageStream() {
               );
             }
 
+            if (block.kind === "flat") {
+              return <TurnEntries key={block.key} items={block.items} />;
+            }
+            if (block.kind === "turn") {
+              return (
+                <div key={block.key} className="msg agent">
+                  <TurnCollapse id={block.key} durationMs={block.durationMs}>
+                    <TurnEntries items={block.items} inFold />
+                  </TurnCollapse>
+                </div>
+              );
+            }
+
             const row = block.row;
             const prev = blocks[index - 1];
             const next = blocks[index + 1];
@@ -539,17 +381,13 @@ export function MessageStream() {
             }
 
             if (row.kind === "assistant") {
-              const always = block.key === lastFinalKey && !busy;
               return (
                 <div key={block.key} className="msg agent float-in">
                   <div className="md" dangerouslySetInnerHTML={{ __html: renderMd(row.content) }} />
                   {!row.streaming && (
                     <AssistantActions
                       row={row}
-                      always={always}
                       usage={block.usage || []}
-                      process={block.process || []}
-                      durationMs={block.durationMs ?? null}
                       busy={busy}
                       branchingMessageId={branchingMessageId}
                       onBranch={async (messageId) => {
@@ -559,7 +397,6 @@ export function MessageStream() {
                         }
                       }}
                       onOpenUsage={(records) => setUsageModal(records)}
-                      onOpenProcess={(items, durationMs) => setProcessModal({ items, durationMs })}
                     />
                   )}
                 </div>
@@ -628,36 +465,30 @@ export function MessageStream() {
 
       {usageModal && usageInfo && (
         <Sheet title="用量与费用" className="wide" onClose={() => setUsageModal(null)}>
+          <div className="usage-cost">
+            <span className="usage-cost-label">消耗金额</span>
+            <strong className="usage-cost-amount">
+              {usageInfo.costs.length > 0 ? usageInfo.costs.join(" · ") : "未计费"}
+            </strong>
+            {usageInfo.costs.length > 0 && usageInfo.missing > 0 && (
+              <span className="usage-cost-note">另有 {usageInfo.missing} 次请求未计费</span>
+            )}
+          </div>
           <div className="pill-row">
+            <span className="pill">{usageModal.length} 次请求</span>
             {usageInfo.tokens.map((item) => (
               <span key={item} className="pill">
                 {item}
               </span>
             ))}
-            {usageModal.length > 1 && <span className="pill">{usageModal.length} 次请求</span>}
-            {usageInfo.costs.map((cost) => (
-              <span key={cost} className="pill is-accent">
-                {cost}
-              </span>
-            ))}
           </div>
-          <pre className="well sheet-well">{JSON.stringify(usageInfo.raw, null, 2)}</pre>
-        </Sheet>
-      )}
-
-      {processModal && (
-        <Sheet
-          title={
-            processModal.durationMs != null && processModal.durationMs > 0
-              ? `执行过程 · ${formatDuration(processModal.durationMs)}`
-              : "执行过程"
-          }
-          className="wide"
-          onClose={() => setProcessModal(null)}
-        >
-          <div className="process-list">
-            <TurnEntries items={processModal.items} inFold />
-          </div>
+          <pre className="well sheet-well">
+            {JSON.stringify(
+              usageModal.map((record) => record.usage),
+              null,
+              2,
+            )}
+          </pre>
         </Sheet>
       )}
 

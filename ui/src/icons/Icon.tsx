@@ -55,6 +55,15 @@ import {
   Minimize2,
   Bot,
   PanelLeftClose,
+  ImageIcon,
+  Heart,
+  Camera,
+  MapPin,
+  MessageCircle,
+  WandSparkles,
+  RefreshCw,
+  UserRound,
+  Aperture,
 } from "lucide-react";
 
 // 全部界面使用 Lucide 同一套描边图标，按需打包。
@@ -115,6 +124,15 @@ const glyphs = {
   shrink: Minimize2,
   bot: Bot,
   panelClose: PanelLeftClose,
+  image: ImageIcon,
+  heart: Heart,
+  camera: Camera,
+  pin2: MapPin,
+  comment: MessageCircle,
+  wand: WandSparkles,
+  refresh: RefreshCw,
+  user: UserRound,
+  moments: Aperture,
 };
 export type IconName = keyof typeof glyphs;
 export function Icon({

@@ -152,15 +152,12 @@ export async function run({
       }
     }
   } catch (error) {
-    if (signal?.aborted && signal.reason?.name !== "TimeoutError") {
+    if (signal?.aborted) {
       status = "aborted";
       stopReason = "aborted";
     } else {
       status = "incomplete";
-      let code = error.code || `${stage}_error`;
-      if (signal?.reason?.name === "TimeoutError" || error.name === "TimeoutError") {
-        code = "timeout";
-      }
+      const code = error.code || `${stage}_error`;
       stopReason = error.stopReason || code;
       failure = { type: "error", code, error: error.message };
     }

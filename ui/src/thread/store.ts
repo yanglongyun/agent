@@ -2,6 +2,7 @@ import type { ModelInfo } from "../lib/models";
 import { create } from "zustand";
 import { api } from "../lib/api";
 import { toast } from "../overlay/toast";
+import { receiveCompanion, resyncCompanion } from "../companion/store";
 import { connectEvents, type GlobalFrame, type ReplyFrame, type StreamEvent } from "./stream";
 import type { OwnerCost } from "./metering";
 import type { UploadAttachment } from "./attachments";
@@ -282,7 +283,13 @@ async function observeEvents(client: NonNullable<typeof connection>) {
   client.resolve();
 }
 export function receiveFrame(frame: GlobalFrame) {
+  // 角色应用的事件不属于任何会话，交给它自己的状态处理。
+  if ("companion" in frame) {
+    receiveCompanion(frame.companion);
+    return;
+  }
   if ("snapshot" in frame) {
+    resyncCompanion();
     sessionCursors.clear();
     for (const session of frame.snapshot.sessions) {
       sessionCursors.set(session.id, frame.cursor);

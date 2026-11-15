@@ -36,10 +36,6 @@ export default async function ask(
   const stop = () => controller.abort(new DOMException("已停止", "AbortError"));
   process.once("SIGINT", stop);
   process.once("SIGTERM", stop);
-  const timer = setTimeout(
-    () => controller.abort(new DOMException("回复超时", "TimeoutError")),
-    config.run_timeout * 1000,
-  );
   let receivedText = false;
   try {
     const session = createSession(db);
@@ -107,7 +103,6 @@ export default async function ask(
     }
     return { ...result, session_id: session.id };
   } finally {
-    clearTimeout(timer);
     process.off("SIGINT", stop);
     process.off("SIGTERM", stop);
     await tasks.close();

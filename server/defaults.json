@@ -8,9 +8,13 @@
   "compact_system": "把下面对话压成中文交接摘要。保留目标、要求、完成事项、改过的文件、当前进度、待办和关键命令。不要开场白。",
   "compact_prefix": "以下是历史上下文压缩摘要：\n\n",
   "workdir": "",
-  "run_timeout": 600,
   "timeout": 120,
   "max_output": 30000,
+  "image": {
+    "url": "",
+    "key": "",
+    "model": "gpt-image-2"
+  },
   "api": {
     "listen": "0.0.0.0:9500",
     "token": ""

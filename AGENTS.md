@@ -50,7 +50,7 @@
 - 界面是三栏外壳，所有页面共用一份（`ui/src/shell/Frame.tsx`，挂在登录保护层上，切换应用时不重建）：最左是应用导航 `Rail`（对话、记事本、日志在上，主题切换和设置在下），中间是当前应用的列表栏 pane（对话 `shell/ChatPane.tsx`、记事本 `notes/NotesPane.tsx`、日志 `logs/LogsPane.tsx`、设置 `settings/SettingsPane.tsx`，由 `Frame` 按当前应用选择），右边是舞台 `.stage`。应用注册表在 `ui/src/shell/apps.ts`，新增应用先在注册表加一项、在 `Frame` 里给它一个列表栏，并记得路径前缀按路径段匹配；切换应用时回到该应用上次停留的页面（`rememberLocation`）。列表栏和舞台的标题行统一用 `shell/heads.tsx` 的 `PaneHead`、`StageHead`，页面自己的操作作为 `StageHead` 的子节点放在右侧。列表栏里的行统一用 `.row`（当前项加 `on`）。宽屏列表栏可收起（`useShell().collapsed`，记在 localStorage）；窄屏（≤760px，`useNarrow`）导航和列表栏一起收进左侧抽屉，列表栏同一时刻只渲染一份（宽屏在 aside，窄屏在抽屉里），所以抽屉关闭后列表栏内的临时状态会重置。
 - 对话舞台：消息流里用户消息是右侧的品牌色气泡，助手回答是不带气泡的正文，没有头像；代码块由 `thread/format.tsx` 的渲染器加上语言名和「复制」按钮，点击在 `MessageStream` 里统一代理。空白对话时输入区居中、下方是起手式（`thread/Starters.tsx`），背后是 `.aurora` 光晕；登录页用同一个光晕。重命名、删除对话的确认弹窗只有 `thread/ThreadDialogs.tsx` 一份，列表栏的行菜单和舞台右上角的菜单共用。
 - 设置页的分区列表在 `settings/sections.tsx`，列表栏导航和页面排版都按它来，滚动时高亮当前分区；每个分区是 `Section` + 卡片里的 `SettingRow`。保存条只在有未保存的更改时从底部浮出（保存 / 放弃），没有常驻的页脚。
-- 对话界面不显示工具调用与 token，这些信息统一由日志应用提供：`/api/logs/summary|owners|records` 只读，汇总以 `metering` 表为唯一来源，token 按厂商原始字段原样求和，不归一、不估算；对话自身汇总只含 `metering.session_id`，子任务按 `task_id` 独立统计。
+- 对话里按轮显示思考与工具调用（区块组装在 `thread/blocks.ts`，是纯函数，有单元测试）：回复进行中，思考和工具按顺序平铺（`flat`），中间正文单独成消息；回复完成且有最终回答，整轮过程收进「已工作 Xs」折叠条（`turn`，`TurnCollapse`），最终回答留在外面，没有最终回答（例如中途停止）时过程仍平铺，不得隐藏。折叠条的展开状态存在 `useThread().expanded`，最终回答的 key 在进行中和完成后保持一致。对话界面不内联 token 与费用，用量收进回答下方的信息图标（弹窗开头是消耗金额，随后是原始 usage 数组）；每条回答下方常显复制、分支、信息三个图标，完整明细统一由日志应用提供：`/api/logs/summary|owners|records` 只读，汇总以 `metering` 表为唯一来源，token 按厂商原始字段原样求和，不归一、不估算；对话自身汇总只含 `metering.session_id`，子任务按 `task_id` 独立统计。
 - 置顶保存在 `sessions.pinned`（NULL 未置顶，非空为置顶组内升序序号）。列表在服务端按「置顶在前、其余按 updated_at」排序，前端 `compareThreads` 保持同一规则；置顶不修改 updated_at，分支不继承。单个会话用 PATCH `{ pinned }`，拖拽排序、拖入、拖出统一用 PUT `/api/sessions/pinned` 提交完整 ids，由事务整体生效，只向全局 SSE 推送状态变化的会话。拖拽手势集中在 `ui/src/shell/useThreadDrag.ts`：鼠标阈值触发，触屏长按触发，拖拽期间拦截 touchmove 的滚动，搜索时禁用。线上已有数据库的新增列由人工执行 `ALTER TABLE`，代码里不写迁移。
 - 回复结束后不重新查询消息或会话列表，压缩完成后不重新查询摘要。API 通过现有 SSE 事件附带保存确认和会话信息，前端直接更新；确认只在事务提交后发送，不修改标准 item。
 - 生成任务归会话，server/replies.js 只管理执行、未提交事件和终止结果；server/events.js 管理全局有序广播。每个页面只通过 GET /api/events 建立一条 SSE；POST /api/sessions/:id/messages 保存输入后立即返回 202 JSON，停止走普通 HTTP。SSE 信封提供 epoch、cursor、session_id、run_id、event，不增加 Agent 事件类型；新增、改名、分支和删除也通过全局流同步。切换页面只读取历史快照，不建立连接。历史接口原子返回消息、摘要、未提交片段、终止结果和游标，前端缓存查询期间到达的事件，只应用快照游标之后的内容。断线重连自动读取全局列表快照并恢复当前视图，不重发模型请求，不轮询对话列表。切换、刷新、关闭或慢读连接均不取消执行；停止、运行超时和服务关闭才取消。
@@ -62,11 +62,11 @@
 - agent.models 列出已添加的模型；agent.start 通过 model_id 可选独立连接，立即返回 task_id；status、wait、cancel 使用该 ID。子任务独立执行同一 Agent 循环，可分叉已提交的完整上下文；继承消息不复制 usage 和计量。
 - 每个会话最多同时执行 8 个子任务，最多嵌套 3 层。任务使用独立超时与取消控制器，主会话停止或服务关闭时清理任务。
 - 未显式收取的子任务结果，以带 meta.task_results 的标准 user 交接输入返回直接父 Agent；交接输入在模型请求前提交，与 tasks.delivered_at 在同一事务更新。界面隐藏交接输入，不改写用户正文，不伪造 call_id 或重复交付工具返回。
-- 子任务记录由 /api/tasks 读取，界面从对话舞台右上角「更多」菜单进入任务列表并用弹窗展示详情，保留主对话、草稿和滚动位置；它们不出现在用户会话列表。任务完整消息、摘要、模型与费用独立保存。
+- 子任务记录由 /api/tasks 读取，界面从对话标题栏右上角的「后台任务」按钮进入任务列表并用弹窗展示详情，保留主对话、草稿和滚动位置；它们不出现在用户会话列表。任务完整消息、摘要、模型与费用独立保存。
 
 ## 后台命令
 
 - shell 仅在 background:true 时将命令交给 server/shell.js，立即返回 process_id；stdio 读写该命令的标准管道，不创建独立任务。前后台进程共用 server/shell-process.js。
 - shell_jobs 独立保存后台命令、输出末尾、退出码与状态，使用 session_id 归属会话、task_id 标记启动它的子 Agent。它不产生模型计费。
 - 后台命令跨主对话回复存活，无自动超时；停止或删除会话、服务关闭时清理整个进程组，子 Agent 的命令在所属任务结束时清理。每个会话最多 8 条活动命令。
-- /api/processes 提供列表、详情及 stdio 操作，界面和子 Agent 共用对话舞台右上角「更多」菜单中的任务列表，详情在主对话内弹窗展示。
+- /api/processes 提供列表、详情及 stdio 操作，界面从对话标题栏右上角的「后台命令」按钮打开列表，详情在主对话内弹窗展示。标题栏右上角固定为后台任务、后台命令、对话详情、重命名、删除五个图标按钮（`thread/ThreadActions.tsx`），不做「更多」菜单。

@@ -14,14 +14,18 @@ export default async function put(req, res, context) {
       "compact_system",
       "compact_prefix",
       "workdir",
-      "run_timeout",
       "timeout",
       "max_output",
+      "image",
       "api",
     ],
     512 * 1024,
   );
-  const next = { ...context.config, api: { ...context.config.api } };
+  const next = {
+    ...context.config,
+    image: { ...context.config.image },
+    api: { ...context.config.api },
+  };
 
   for (const [key, value] of Object.entries(patch)) {
     switch (key) {
@@ -61,10 +65,25 @@ export default async function put(req, res, context) {
       case "compact_on_cache_expiry":
       case "cache_ttl":
       case "keep":
-      case "run_timeout":
       case "timeout":
       case "max_output": {
         next[key] = value;
+        break;
+      }
+      case "image": {
+        if (!value || typeof value !== "object" || Array.isArray(value)) {
+          fail(400, "image 必须是对象");
+        }
+        for (const [field, text] of Object.entries(value)) {
+          if (!["url", "key", "model"].includes(field) || typeof text !== "string") {
+            fail(400, "image 只接受字符串 url、key、model");
+          }
+          // 密钥留空表示沿用已保存的值，界面不回显密钥。
+          if (field === "key" && !text.trim()) {
+            continue;
+          }
+          next.image[field] = text.trim();
+        }
         break;
       }
       case "api": {

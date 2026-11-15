@@ -21,9 +21,9 @@ interface ConfigView {
   compact_system: string;
   compact_prefix: string;
   workdir: string;
-  run_timeout: number;
   timeout: number;
   max_output: number;
+  image: { url: string; model: string; key_set: boolean };
   api: { listen: string };
   paths: { data_dir: string; config: string; web_dir: string };
 }
@@ -37,12 +37,14 @@ interface Form {
   compact_system: string;
   compact_prefix: string;
   workdir: string;
-  run_timeout: string;
   timeout: string;
   max_output: string;
+  image_url: string;
+  image_model: string;
+  image_key: string;
   listen: string;
 }
-type NumberField = "compact_at" | "cache_ttl" | "keep" | "run_timeout" | "timeout" | "max_output";
+type NumberField = "compact_at" | "cache_ttl" | "keep" | "timeout" | "max_output";
 const toForm = (config: ConfigView): Form => ({
   models: config.models.map((model) => ({ ...model, key: "" })),
   system: config.system,
@@ -53,9 +55,11 @@ const toForm = (config: ConfigView): Form => ({
   compact_system: config.compact_system,
   compact_prefix: config.compact_prefix,
   workdir: config.workdir,
-  run_timeout: String(config.run_timeout),
   timeout: String(config.timeout),
   max_output: String(config.max_output),
+  image_url: config.image.url,
+  image_model: config.image.model,
+  image_key: "",
   listen: config.api.listen,
 });
 
@@ -134,9 +138,9 @@ export function Settings() {
         compact_system: value.compact_system,
         compact_prefix: value.compact_prefix,
         workdir: value.workdir,
-        run_timeout: number("run_timeout"),
         timeout: number("timeout"),
         max_output: number("max_output"),
+        image: { url: value.image_url, model: value.image_model, key: value.image_key },
         api: {
           listen: value.listen,
         },
@@ -271,13 +275,55 @@ export function Settings() {
                       onChange={(event) => field("workdir", event.target.value)}
                     />
                   </SettingRow>
-                  {numberField("回复超时（秒）", "run_timeout", "一次完整回复的最长时间。")}
                   {numberField("命令超时（秒）", "timeout", "shell 工具单次执行的最长时间。")}
                   {numberField(
                     "工具输出上限（字符）",
                     "max_output",
                     "单次工具结果最多保留的字符数，超出截断。",
                   )}
+                </div>
+              </Section>
+
+              <Section
+                id="image"
+                title="生图"
+                description="角色的头像、动态配图和聊天照片使用的 OpenAI 兼容生图接口。留空则角色只发文字。"
+              >
+                <div className="card settings-card">
+                  <SettingRow
+                    label="接口地址"
+                    note="填到 /v1 为止，例如 https://api.openai.com/v1。"
+                    stack
+                  >
+                    <input
+                      className="field-input mono"
+                      value={value.image_url}
+                      placeholder="https://api.openai.com/v1"
+                      onChange={(event) => field("image_url", event.target.value)}
+                    />
+                  </SettingRow>
+                  <SettingRow label="模型" stack>
+                    <input
+                      className="field-input mono"
+                      value={value.image_model}
+                      placeholder="gpt-image-2"
+                      onChange={(event) => field("image_model", event.target.value)}
+                    />
+                  </SettingRow>
+                  <SettingRow
+                    label="API Key"
+                    note={config.image.key_set ? "已保存，留空保持不变。" : "尚未填写。"}
+                    stack
+                  >
+                    <input
+                      className="field-input mono"
+                      type="password"
+                      autoComplete="off"
+                      value={value.image_key}
+                      placeholder={config.image.key_set ? "••••••••" : "sk-…"}
+                      onChange={(event) => field("image_key", event.target.value)}
+                    />
+                  </SettingRow>
                 </div>
               </Section>
 

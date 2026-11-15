@@ -132,10 +132,6 @@ export default async function post(req, res, context, id) {
   });
   const controller = reply.controller;
   active.set(id, reply);
-  const timer = setTimeout(
-    () => controller.abort(new DOMException("回复超时", "TimeoutError")),
-    config.run_timeout * 1000,
-  );
   const emit = reply.publish;
   const savedAttachments = [];
   let sequence = 0;
@@ -224,21 +220,12 @@ export default async function post(req, res, context, id) {
     };
     emit(confirmation);
     const acceptedCursor = context.events.cursor;
-    void executeReply(
-      context,
-      id,
-      reply,
-      config,
-      preview,
-      recorder,
-      {
-        messages,
-        usage,
-        metering,
-        lastResponseAt,
-      },
-      timer,
-    );
+    void executeReply(context, id, reply, config, preview, recorder, {
+      messages,
+      usage,
+      metering,
+      lastResponseAt,
+    });
     return json(res, 202, {
       epoch: context.events.epoch,
       cursor: acceptedCursor,
@@ -247,7 +234,6 @@ export default async function post(req, res, context, id) {
       session: confirmation.session,
     });
   } catch (error) {
-    clearTimeout(timer);
     for (const imageURL of config.run_images) {
       await fs.rm(path.join(context.paths.images, path.basename(imageURL)), { force: true });
     }
@@ -260,7 +246,7 @@ export default async function post(req, res, context, id) {
   }
 }
 
-async function executeReply(context, id, reply, config, preview, recorder, history, timer) {
+async function executeReply(context, id, reply, config, preview, recorder, history) {
   const db = context.db;
   const controller = reply.controller;
   const emit = reply.publish;
@@ -330,14 +316,13 @@ async function executeReply(context, id, reply, config, preview, recorder, histo
   } catch (error) {
     let status = "incomplete";
     const stopReason = error.code || "api_error";
-    if (controller.signal.aborted && controller.signal.reason?.name !== "TimeoutError") {
+    if (controller.signal.aborted) {
       status = "aborted";
     } else if (!errorSent) {
       emit({ type: "error", code: stopReason, error: error.message });
     }
     terminal = { type: "done", status, stopReason };
   } finally {
-    clearTimeout(timer);
     try {
       await context.tasks.cancelChildren({ sessionId: id });
       if (controller.signal.aborted) {

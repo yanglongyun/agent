@@ -15,7 +15,7 @@ export default async function get(req, res, context, name) {
     "content-type": image.type,
     "content-length": image.bytes.length,
     "x-content-type-options": "nosniff",
-    "cache-control": "private, no-store",
+    "cache-control": "private, max-age=31536000, immutable",
   });
   res.end(req.method === "HEAD" ? undefined : image.bytes);
 }
