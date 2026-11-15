@@ -866,6 +866,9 @@
   box-sizing: content-box;
   animation: breathe 1.6s ease-in-out infinite;
 }
+.thread-more-menu {
+  width: min(250px, calc(100vw - 24px));
+}
 .model-options {
   width: min(320px, calc(100vw - 24px));
   max-height: min(460px, var(--radix-dropdown-menu-content-available-height));
@@ -898,6 +901,18 @@
 .sheet-well {
   max-height: 360px;
   margin-top: 14px;
+}
+.usage-requests {
+  margin-top: 12px;
+}
+.model-usage {
+  margin-top: 18px;
+}
+.model-usage h3 {
+  margin-bottom: 8px;
+  color: var(--text-3);
+  font-size: 12.5px;
+  font-weight: 600;
 }
 .usage-cost {
   display: flex;

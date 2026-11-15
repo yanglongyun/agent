@@ -156,10 +156,6 @@ a {
   background: var(--tint-2);
   color: var(--text-1);
 }
-.icon-btn.danger:hover {
-  background: var(--danger-soft);
-  color: var(--danger);
-}
 .icon-btn:active {
   background: var(--tint-3);
 }
@@ -741,6 +737,10 @@ select.field-input {
   height: 1px;
   margin: 5px 6px;
   background: var(--edge);
+}
+.menu-item-label {
+  flex: 1;
+  min-width: 0;
 }
 .hint {
   z-index: 130;

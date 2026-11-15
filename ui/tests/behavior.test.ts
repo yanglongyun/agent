@@ -42,7 +42,7 @@ import {
 } from "../src/logs/format";
 import { copyText } from "../src/lib/clipboard";
 import { notePreview, noteTime, noteTitle } from "../src/notes/format";
-import { usageSummary, costLabel } from "../src/thread/metering";
+import { usageSummary, costLabel, requestRows } from "../src/thread/metering";
 
 const sessionCost = {
   cost: { amount: 0, currency: "USD", unpriced_requests: 0 },
@@ -1664,6 +1664,41 @@ test("应用面板：按地址判断当前应用，未知页面不属于任何�
   assert.equal(matchApp("/characters/abc/moments")?.id, "companion");
   // 404 页不会覆盖任何应用的记忆。
   assert.equal(launchPath(apps[4]), "/settings");
+});
+
+test("回答的用量明细：每次请求标注当次所用模型，对话中途换模型也各自显示，缺少计量时不猜模型", () => {
+  const priced = (model: string, amount: number) => ({
+    protocol: "responses",
+    model,
+    endpoint: "https://example.com",
+    context_tokens: null,
+    status: "priced" as const,
+    cost: {
+      amount,
+      currency: "USD",
+      basis: "list_price_estimate",
+      reference: "",
+      rule_date: "",
+      tier: "standard",
+      period: null,
+      units: [],
+    },
+  });
+  const rows = requestRows([
+    { usage: { input_tokens: 10, output_tokens: 2 }, metering: priced("model-a", 0.5) },
+    { usage: { input_tokens: 20, output_tokens: 4 }, metering: priced("model-b", 0.25) },
+    { usage: { input_tokens: 1, output_tokens: 1 }, metering: null },
+  ]);
+  assert.deepEqual(
+    rows.map((row) => [row.model, row.cost]),
+    [
+      ["model-a", "预估 USD 0.5000"],
+      ["model-b", "预估 USD 0.2500"],
+      ["未知模型", "未计费"],
+    ],
+  );
+  assert.ok(rows[0].tokens.includes("输入 10"));
+  assert.ok(rows[1].tokens.includes("输入 20"));
 });
 
 test("记事本：标题为空时显示未命名，预览压平空白，时间只显示今天或日期", () => {

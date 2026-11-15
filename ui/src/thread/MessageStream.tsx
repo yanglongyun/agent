@@ -8,7 +8,7 @@ import { Hint } from "../overlay/Hint";
 import { Sheet } from "../overlay/Sheet";
 import { AttachmentInfo } from "./AttachmentInfo";
 import { renderMd } from "./format";
-import { usageSummary } from "./metering";
+import { requestRows, usageSummary } from "./metering";
 import { buildBlocks } from "./blocks";
 import { TurnCollapse, TurnEntries, Working } from "./Process";
 import { branchThread, loadOlder, retrySend, useThread } from "./store";
@@ -251,6 +251,8 @@ export function MessageStream() {
   }, [ready, hasMore, loadingOlder, rows.length]);
 
   const usageInfo = usageModal ? usageSummary(usageModal) : null;
+  const usageRequests = usageModal ? requestRows(usageModal) : [];
+  const usageModels = [...new Set(usageRequests.map((request) => request.model))];
 
   // 代码块标题行里的「复制」按钮由这里统一处理：正文是渲染好的 HTML，没有各自的事件。
   const copyCodeBlock = (event: MouseEvent<HTMLDivElement>) => {
@@ -473,6 +475,7 @@ export function MessageStream() {
             {usageInfo.costs.length > 0 && usageInfo.missing > 0 && (
               <span className="usage-cost-note">另有 {usageInfo.missing} 次请求未计费</span>
             )}
+            <span className="usage-cost-note">模型：{usageModels.join("、")}</span>
           </div>
           <div className="pill-row">
             <span className="pill">{usageModal.length} 次请求</span>
@@ -480,6 +483,26 @@ export function MessageStream() {
               <span key={item} className="pill">
                 {item}
               </span>
+            ))}
+          </div>
+          <div className="card usage-card usage-requests">
+            {usageRequests.map((request, index) => (
+              <div key={index} className="usage-row">
+                <div className="usage-row-head">
+                  <b className="mono">{request.model}</b>
+                  <span className="usage-row-count">第 {index + 1} 次</span>
+                  <span className="usage-row-cost">{request.cost}</span>
+                </div>
+                {request.tokens.length > 0 && (
+                  <span className="pill-row">
+                    {request.tokens.map((item) => (
+                      <span key={item} className="pill">
+                        {item}
+                      </span>
+                    ))}
+                  </span>
+                )}
+              </div>
             ))}
           </div>
           <pre className="well sheet-well">

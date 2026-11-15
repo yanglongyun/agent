@@ -44,6 +44,8 @@ export interface OwnersPage {
 export interface RecordsPage {
   owner: Owner;
   summary: Summary;
+  /** 仅对话有：含子任务的整体汇总，按模型拆开；子任务为 null。 */
+  total_summary: Summary | null;
   records: RawMessage[];
   has_more: boolean;
   compactions: Compaction[];

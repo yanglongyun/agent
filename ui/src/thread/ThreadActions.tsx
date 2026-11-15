@@ -1,15 +1,16 @@
+import * as Dropdown from "@radix-ui/react-dropdown-menu";
 import { useState } from "react";
 import { useNavigate } from "react-router";
 import { Icon } from "../icons/Icon";
-import { Hint } from "../overlay/Hint";
 import { Sheet } from "../overlay/Sheet";
 import { active } from "../tasks/status";
 import { TasksSheet, useSessionActivity } from "../tasks/Tasks";
 import { costLabel } from "./metering";
+import { ModelUsage } from "./ModelUsage";
 import { selectedModel, threadTitle, useThread } from "./store";
 import { DeleteThreadSheet, RenameThreadSheet } from "./ThreadDialogs";
 
-// 标题栏右上角的对话操作：后台任务、后台命令、对话详情、重命名、删除，各自一个图标按钮。
+// 标题栏右上角的「更多」菜单：后台任务、后台命令、对话详情、重命名、删除。
 export function ThreadActions() {
   const navigate = useNavigate();
   const state = useThread();
@@ -27,80 +28,80 @@ export function ThreadActions() {
 
   const runningTasks = activity.tasks.filter(active).length;
   const runningCommands = activity.processes.filter(active).length;
+  const taskBadge = runningTasks > 0 ? `${runningTasks} 进行中` : String(activity.tasks.length);
+  const commandBadge =
+    runningCommands > 0 ? `${runningCommands} 进行中` : String(activity.processes.length);
 
   return (
     <>
-      {currentId && (
-        <Hint text="后台任务">
-          <button
-            type="button"
-            className="icon-btn has-dot"
-            aria-label="后台任务"
-            onClick={() => setPanel("agent")}
-          >
-            <Icon name="bot" size={18} />
-            {runningTasks > 0 && (
-              <span className="icon-dot" aria-label={`${runningTasks} 个任务进行中`} />
+      <Dropdown.Root>
+        <Dropdown.Trigger asChild>
+          <button type="button" className="icon-btn has-dot" aria-label="更多">
+            <Icon name="more" size={18} />
+            {runningTasks + runningCommands > 0 && (
+              <span
+                className="icon-dot"
+                aria-label={`${runningTasks + runningCommands} 项后台任务进行中`}
+              />
             )}
           </button>
-        </Hint>
-      )}
-      {currentId && (
-        <Hint text="后台命令">
-          <button
-            type="button"
-            className="icon-btn has-dot"
-            aria-label="后台命令"
-            onClick={() => setPanel("shell")}
+        </Dropdown.Trigger>
+        <Dropdown.Portal>
+          <Dropdown.Content
+            className="dropdown-content thread-more-menu"
+            align="end"
+            sideOffset={8}
+            collisionPadding={12}
           >
-            <Icon name="terminal" size={18} />
-            {runningCommands > 0 && (
-              <span className="icon-dot" aria-label={`${runningCommands} 条命令进行中`} />
+            {currentId && (
+              <Dropdown.Item className="dropdown-item" onSelect={() => setPanel("agent")}>
+                <Icon name="bot" size={16} />
+                <span className="menu-item-label">后台任务</span>
+                {activity.tasks.length > 0 && (
+                  <span className={`badge${runningTasks > 0 ? " is-ok is-live" : ""}`}>
+                    {taskBadge}
+                  </span>
+                )}
+              </Dropdown.Item>
             )}
-          </button>
-        </Hint>
-      )}
-      <Hint text="对话详情">
-        <button
-          type="button"
-          className="icon-btn"
-          aria-label="对话详情"
-          onClick={() => setPanel("info")}
-        >
-          <Icon name="info" size={18} />
-        </button>
-      </Hint>
-      {currentId && (
-        <Hint text="重命名">
-          <button
-            type="button"
-            className="icon-btn"
-            aria-label="重命名"
-            onClick={() => setPanel("rename")}
-          >
-            <Icon name="pen" size={18} />
-          </button>
-        </Hint>
-      )}
-      {currentId && (
-        <Hint text="删除对话">
-          <button
-            type="button"
-            className="icon-btn danger"
-            aria-label="删除对话"
-            onClick={() => setPanel("delete")}
-          >
-            <Icon name="trash" size={18} />
-          </button>
-        </Hint>
-      )}
+            {currentId && (
+              <Dropdown.Item className="dropdown-item" onSelect={() => setPanel("shell")}>
+                <Icon name="terminal" size={16} />
+                <span className="menu-item-label">后台命令</span>
+                {activity.processes.length > 0 && (
+                  <span className={`badge${runningCommands > 0 ? " is-ok is-live" : ""}`}>
+                    {commandBadge}
+                  </span>
+                )}
+              </Dropdown.Item>
+            )}
+            <Dropdown.Item className="dropdown-item" onSelect={() => setPanel("info")}>
+              <Icon name="info" size={16} />
+              <span className="menu-item-label">对话详情</span>
+            </Dropdown.Item>
+            {currentId && (
+              <>
+                <Dropdown.Separator className="dropdown-separator" />
+                <Dropdown.Item className="dropdown-item" onSelect={() => setPanel("rename")}>
+                  <Icon name="pen" size={16} />
+                  <span className="menu-item-label">重命名</span>
+                </Dropdown.Item>
+                <Dropdown.Item className="dropdown-item danger" onSelect={() => setPanel("delete")}>
+                  <Icon name="trash" size={16} />
+                  <span className="menu-item-label">删除对话</span>
+                </Dropdown.Item>
+              </>
+            )}
+          </Dropdown.Content>
+        </Dropdown.Portal>
+      </Dropdown.Root>
 
       {(panel === "agent" || panel === "shell") && (
         <TasksSheet kind={panel} activity={activity} onClose={() => setPanel(null)} />
       )}
 
       {panel === "info" && (
-        <Sheet title="对话详情" onClose={() => setPanel(null)}>
+        <Sheet title="对话详情" className="wide" onClose={() => setPanel(null)}>
           <dl className="kv">
             <div>
               <dt>对话</dt>
@@ -135,6 +136,7 @@ export function ThreadActions() {
               </div>
             )}
           </dl>
+          {currentId && <ModelUsage sessionId={currentId} />}
         </Sheet>
       )}
 

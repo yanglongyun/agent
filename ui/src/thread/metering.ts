@@ -76,3 +76,16 @@ export function usageSummary(records: UsageRecord[]) {
     raw: records.length === 1 ? records[0].usage : records.map((record) => record.usage),
   };
 }
+
+// 一轮回答可能包含多次模型请求，对话中途还可能切换过模型：
+// 每次请求单独列出所用模型、金额和 token，模型取自当次请求保存的计量快照。
+export function requestRows(records: UsageRecord[]) {
+  return records.map((record) => {
+    const one = usageSummary([record]);
+    return {
+      model: record.metering?.model || "未知模型",
+      cost: one.costs[0] || "未计费",
+      tokens: one.tokens,
+    };
+  });
+}

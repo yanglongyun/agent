@@ -102,24 +102,36 @@ export default function get(req, res, context) {
   }
 
   // 终身汇总不受 type、关键字和分页影响。对话只统计自己的请求（含自己的压缩），子任务另算。
-  const summary = summarizeUsage(
-    db
-      .prepare(
-        `
+  // where 只来自下面固定的两段 SQL，用户输入只作为参数。
+  const summarize = (where, params) =>
+    summarizeUsage(
+      db
+        .prepare(
+          `
       SELECT metering.measurement, COALESCE(messages.usage, compactions.usage) AS usage
       FROM metering
       LEFT JOIN messages ON messages.id = metering.message_id
       LEFT JOIN compactions ON compactions.id = metering.compaction_id
-      WHERE metering.${column} = ?
+      WHERE ${where}
     `,
-      )
-      .all(id)
-      .map((row) => ({ usage: parse(row.usage), measurement: parse(row.measurement) })),
-  );
+        )
+        .all(...params)
+        .map((row) => ({ usage: parse(row.usage), measurement: parse(row.measurement) })),
+    );
+  const summary = summarize(`metering.${column} = ?`, [id]);
+  // 对话另给「含子任务」的整体汇总，按模型拆开；对话中途切换模型时，各模型的消耗一目了然。
+  let totalSummary = null;
+  if (kind === "session") {
+    totalSummary = summarize(
+      "(metering.session_id = ? OR metering.task_id IN (SELECT id FROM tasks WHERE session_id = ?))",
+      [id, id],
+    );
+  }
 
   return json(res, 200, {
     owner: owners[0],
     summary,
+    total_summary: totalSummary,
     records,
     has_more: hasMore,
     compactions,

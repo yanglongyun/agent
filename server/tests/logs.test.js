@@ -614,9 +614,21 @@ test("records：压缩记录字段与计量，对话汇总不含子任务，子�
   assert.deepEqual(narrowed.summary, session.summary);
   // owner.cost 仍是含子任务的累计口径，与 summary 是两回事。
   assert.equal(session.owner.cost.amount, 0.9375);
+  // total_summary 含子任务，金额与会话累计一致，并按模型拆开：子任务用的 haiku 单独一行。
+  assert.equal(session.total_summary.requests, 5);
+  assert.deepEqual(session.total_summary.cost, session.owner.cost);
+  assert.deepEqual(
+    session.total_summary.models.map((model) => [model.model, model.requests, model.cost.amount]),
+    [
+      ["claude-haiku-5-5", 2, 0.1875],
+      ["claude-sonnet-5-5", 2, 0.75],
+      ["gpt-5", 1, 0],
+    ],
+  );
 
   const task = (await f.get("/api/logs/records?kind=task&id=t1-xxxx")).body;
   assert.equal(task.owner.kind, "task");
+  assert.equal(task.total_summary, null);
   assert.equal(task.owner.session_id, "s1-aaaa");
   assert.equal(task.owner.session_title, "对话一");
   assert.deepEqual(idsOf(task.records), [ids.taskUser, ids.taskAnswer, ids.taskImage]);
