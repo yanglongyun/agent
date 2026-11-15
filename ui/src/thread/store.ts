@@ -311,7 +311,12 @@ export function receiveFrame(frame: GlobalFrame) {
         active.resync = true;
       }
     } else if (get().currentId) {
-      void openThread(get().currentId, true);
+      const current = get();
+      if (current.ready) {
+        void resyncThread(current.currentId);
+      } else {
+        void openThread(current.currentId, true);
+      }
     }
     return;
   }
@@ -414,6 +419,42 @@ export async function openThread(id: string, force = false) {
     }
   }
 }
+// SSE 重连后的重新同步：保留已经显示的消息，只补拉历史再合并。
+// 不走 reset()，否则每次断线重连都会清空对话、闪出「正在打开对话…」。
+async function resyncThread(id: string) {
+  const version = get().generation;
+  set({ loadError: "" });
+  try {
+    const page = await api.get<Page>(`${url(id)}/messages?limit=${PAGE}`);
+    if (get().generation !== version || get().currentId !== id) {
+      return;
+    }
+    set((state) => ({
+      messages: mergeMessages(state.messages, page.messages),
+      notes: state.notes.length > 0 ? state.notes : resultNotes(page.reply_result),
+      compactions: page.compactions,
+      hasMore: page.has_more,
+      threads:
+        (sessionCursors.get(id) || 0) > page.cursor
+          ? state.threads
+          : upsertThread(state.threads, page.session),
+      epoch: page.epoch,
+      cursor: Math.max(state.cursor, page.cursor),
+      busy: page.session.running,
+      active: page.session.running ? { userKey: "", accepted: true, submitting: false } : null,
+      ready: true,
+    }));
+    sessionCursors.set(id, Math.max(sessionCursors.get(id) || 0, page.cursor));
+    for (const event of page.pending) {
+      receiveEvent(event);
+    }
+  } catch (error) {
+    if (get().generation === version) {
+      set({ loadError: error instanceof Error ? error.message : "对话重新同步失败" });
+    }
+  }
+}
+
 export function createDraft() {
   reset();
   set((state) => {

@@ -1171,6 +1171,9 @@ test("全局流自动重连，重新读取快照恢复同一任务，模型请�
   let close: () => void;
   let historyReads = 0;
   let posts = 0;
+  // 重连后补拉历史的请求先挂起，才能观察等待期间界面是否被清空。
+  let release: () => void = () => {};
+  let held: Promise<void> = Promise.resolve();
   globalThis.fetch = async (route, options) => {
     if (String(route) === "/api/events") {
       connections++;
@@ -1184,6 +1187,9 @@ test("全局流自动重连，重新读取快照恢复同一任务，模型请�
       return json({ epoch: "test", cursor, run_id: "running", message: user, session }, 202);
     }
     historyReads++;
+    if (historyReads > 1) {
+      await held;
+    }
     return json(
       page([user], session, {
         run_id: "running",
@@ -1197,10 +1203,18 @@ test("全局流自动重连，重新读取快照恢复同一任务，模型请�
   close!();
   await tick();
   assert.equal(useThread.getState().connected, false);
+  held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
   assert.equal(send("断线时不重发"), false);
   await new Promise((resolve) => setTimeout(resolve, 1100));
   assert.equal(connections, 2);
   assert.equal(historyReads, 2);
+  // 重连后的同步还在路上时，已经显示的消息和 ready 都必须保留，
+  // 否则界面会闪成「正在打开对话…」。
+  assert.equal(useThread.getState().ready, true);
+  assert.ok(useThread.getState().messages.length > 0);
+  release();
   assert.equal(posts, 0);
   assert.equal(useThread.getState().connected, true);
   assert.equal(useThread.getState().busy, true);
