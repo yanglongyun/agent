@@ -142,4 +142,43 @@ export default [
       { through: null, input: 2, output: 10, cached: 0.1, write: 0, write_long: 0 },
     ],
   },
+  // Kimi K3 系列官方以人民币标价（¥/MTok），按其当日汇率折成美元，原始价写在注释里便于复核。
+  {
+    model: "k3.1-pro",
+    protocols: ["responses", "chat-completions"],
+    reference: "https://platform.kimi.com/docs/pricing/chat",
+    currency: "USD",
+    checked: "2026-11-16",
+    // 官方 ¥13 / ¥68 / ¥1.30 / ¥13 / ¥26（输入 / 输出 / 缓存命中 / 写入 5min / 写入 1h）；
+    // 换算汇率 1 USD = 6.6784 CNY（2026-11-16）。自动缓存，无单独缓存写费档。
+    rates: [
+      {
+        through: null,
+        input: 1.9466,
+        output: 10.1821,
+        cached: 0.1947,
+        write: 1.9466,
+        write_long: 3.8931,
+      },
+    ],
+  },
+  {
+    model: "k3",
+    protocols: ["responses", "chat-completions"],
+    reference: "https://platform.kimi.com/docs/pricing/chat",
+    currency: "USD",
+    checked: "2026-11-16",
+    // 官方 ¥20 / ¥100 / ¥2.00 / ¥20 / ¥40（输入 / 输出 / 缓存命中 / 写入 5min / 写入 1h）；
+    // 换算汇率 1 USD = 6.6784 CNY（2026-11-16）。
+    rates: [
+      {
+        through: null,
+        input: 2.9947,
+        output: 14.9736,
+        cached: 0.2995,
+        write: 2.9947,
+        write_long: 5.9895,
+      },
+    ],
+  },
 ];
