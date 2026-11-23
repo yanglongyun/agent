@@ -101,6 +101,43 @@ test("Claude 原生输入不包含缓存，两种写入分开收费且不重复�
   assert.equal(usage.input_tokens, 100);
 });
 
+test("Ramify 的 Neon 成稿与 Haiku 压缩按原始输入、缓存和思考用量计价", () => {
+  const neon = measure(
+    {
+      prompt_tokens: 1000,
+      prompt_tokens_details: { cached_tokens: 100 },
+      completion_tokens: 150,
+      total_tokens: 1200,
+    },
+    { ...target, model: "gemini-4-neon", protocol: "chat-completions" },
+  );
+  assert.equal(neon.cost.amount, 0.005715);
+  const haiku = { ...target, model: "claude-haiku-5-5", protocol: "anthropic-messages" };
+  assert.equal(measure({ input_tokens: 100_000, output_tokens: 100 }, haiku).cost.amount, 0.01005);
+  assert.equal(
+    measure({ input_tokens: 100_001, output_tokens: 100 }, haiku).cost.amount,
+    0.0502505,
+  );
+});
+
+test("Gemini 3.1 Pro 计入思考用量，输入超过 20 万 token 使用长上下文价格", () => {
+  const model = { ...target, model: "gemini-3.1-pro-preview", protocol: "chat-completions" };
+  const standard = measure(
+    {
+      prompt_tokens: 1000,
+      prompt_tokens_details: { cached_tokens: 100 },
+      completion_tokens: 100,
+      total_tokens: 1250,
+    },
+    model,
+  );
+  assert.equal(standard.cost.amount, 0.00482);
+  assert.equal(
+    measure({ prompt_tokens: 200_001, completion_tokens: 1 }, model).cost.amount,
+    0.800022,
+  );
+});
+
 test("缺少价格或用量不会产生零费用；有效零用量可以计为零", () => {
   assert.equal(measure(null, target), null);
   assert.equal(

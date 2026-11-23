@@ -1,7 +1,6 @@
 import { ApiError } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import type { Thread } from "./store";
-import type { CompanionEvent } from "../companion/types";
 import type {
   MessageItem,
   ReasoningItem,
@@ -61,9 +60,8 @@ export type GlobalFrame =
   | ReplyFrame
   | ({ epoch: string; cursor: number } & (
       | { snapshot: { sessions: Thread[] } }
-      | { session: Thread }
+      | { session: Thread; recalled_from?: number }
       | { deleted_session_id: string }
-      | { companion: CompanionEvent }
     ));
 
 // 页面生命周期只有这一条 SSE，发送消息与停止均使用普通 HTTP。

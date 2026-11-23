@@ -2,7 +2,6 @@ import type { ModelInfo } from "../lib/models";
 import { create } from "zustand";
 import { api } from "../lib/api";
 import { toast } from "../overlay/toast";
-import { receiveCompanion, resyncCompanion } from "../companion/store";
 import { connectEvents, type GlobalFrame, type ReplyFrame, type StreamEvent } from "./stream";
 import type { OwnerCost } from "./metering";
 import type { UploadAttachment } from "./attachments";
@@ -26,10 +25,8 @@ export interface Thread extends OwnerCost {
   updated_at: number;
 }
 export interface Status {
-  version: string;
   models: ModelInfo[];
   workdir: string;
-  data_dir: string;
 }
 interface ReplyResult {
   status: "completed" | "incomplete" | "aborted";
@@ -76,6 +73,7 @@ interface ThreadState {
   hasMore: boolean;
   loadingOlder: boolean;
   branchingMessageId: number;
+  recallingMessageId: number;
 }
 export const threadTitle = (thread: Thread | undefined) =>
   thread?.title || thread?.preview || "对话";
@@ -101,6 +99,7 @@ export const useThread = create<ThreadState>(() => ({
   hasMore: false,
   loadingOlder: false,
   branchingMessageId: 0,
+  recallingMessageId: 0,
 }));
 const set = useThread.setState;
 const get = useThread.getState;
@@ -283,13 +282,7 @@ async function observeEvents(client: NonNullable<typeof connection>) {
   client.resolve();
 }
 export function receiveFrame(frame: GlobalFrame) {
-  // 角色应用的事件不属于任何会话，交给它自己的状态处理。
-  if ("companion" in frame) {
-    receiveCompanion(frame.companion);
-    return;
-  }
   if ("snapshot" in frame) {
-    resyncCompanion();
     sessionCursors.clear();
     for (const session of frame.snapshot.sessions) {
       sessionCursors.set(session.id, frame.cursor);
@@ -298,12 +291,8 @@ export function receiveFrame(frame: GlobalFrame) {
     set((state) => ({
       connected: true,
       epoch: frame.epoch,
-      threads: frame.snapshot.sessions.map((session) =>
-        mergeThread(
-          state.threads.find((thread) => thread.id === session.id),
-          session,
-        ),
-      ),
+      cursor: state.epoch === frame.epoch ? state.cursor : 0,
+      threads: frame.snapshot.sessions,
     }));
     if (get().active?.submitting) {
       const active = get().active;
@@ -325,7 +314,11 @@ export function receiveFrame(frame: GlobalFrame) {
   }
   globalCursor = frame.cursor;
   if ("session" in frame) {
-    applySession(frame.session, frame.cursor);
+    if (frame.recalled_from !== undefined) {
+      applyRecall(frame.session, frame.cursor);
+    } else {
+      applySession(frame.session, frame.cursor);
+    }
     return;
   }
   if ("deleted_session_id" in frame) {
@@ -358,6 +351,21 @@ function applySession(session: Thread, cursor: number) {
   sessionCursors.set(session.id, cursor);
   set((state) => ({ threads: upsertThread(state.threads, session) }));
 }
+function applyRecall(session: Thread, cursor: number) {
+  if (cursor <= (sessionCursors.get(session.id) || 0)) {
+    return;
+  }
+  sessionCursors.set(session.id, cursor);
+  set((state) => ({
+    threads: [...state.threads.filter((thread) => thread.id !== session.id), session].sort(
+      compareThreads,
+    ),
+  }));
+  if (get().currentId === session.id) {
+    void openThread(session.id, true);
+  }
+}
+
 function applyFrame(frame: ReplyFrame) {
   if (frame.epoch !== get().epoch || frame.cursor <= get().cursor) {
     return;
@@ -423,15 +431,21 @@ export async function openThread(id: string, force = false) {
 // 不走 reset()，否则每次断线重连都会清空对话、闪出「正在打开对话…」。
 async function resyncThread(id: string) {
   const version = get().generation;
+  const limit = Math.min(500, Math.max(PAGE, get().messages.filter((row) => row.id > 0).length));
+  const loading = { id, version, frames: [] as ReplyFrame[] };
+  history = loading;
   set({ loadError: "" });
   try {
-    const page = await api.get<Page>(`${url(id)}/messages?limit=${PAGE}`);
-    if (get().generation !== version || get().currentId !== id) {
+    const page = await api.get<Page>(`${url(id)}/messages?limit=${limit}`);
+    if (history !== loading || get().generation !== version) {
       return;
     }
     set((state) => ({
-      messages: mergeMessages(state.messages, page.messages),
-      notes: state.notes.length > 0 ? state.notes : resultNotes(page.reply_result),
+      messages: page.messages.map((row) => ({
+        ...row,
+        key: state.messages.find((old) => old.id === row.id)?.key,
+      })),
+      notes: resultNotes(page.reply_result),
       compactions: page.compactions,
       hasMore: page.has_more,
       threads:
@@ -443,13 +457,20 @@ async function resyncThread(id: string) {
       busy: page.session.running,
       active: page.session.running ? { userKey: "", accepted: true, submitting: false } : null,
       ready: true,
+      loadingOlder: false,
+      generation: state.generation + 1,
     }));
     sessionCursors.set(id, Math.max(sessionCursors.get(id) || 0, page.cursor));
+    history = null;
     for (const event of page.pending) {
       receiveEvent(event);
     }
+    for (const frame of loading.frames) {
+      applyFrame(frame);
+    }
   } catch (error) {
-    if (get().generation === version) {
+    if (history === loading && get().generation === version) {
+      history = null;
       set({ loadError: error instanceof Error ? error.message : "对话重新同步失败" });
     }
   }
@@ -499,7 +520,12 @@ export function send(
   attachments: UploadAttachment[] = [],
 ): boolean {
   const content = text.trim();
-  if ((!content && images.length === 0 && attachments.length === 0) || get().busy || !get().ready) {
+  if (
+    (!content && images.length === 0 && attachments.length === 0) ||
+    get().busy ||
+    get().recallingMessageId ||
+    !get().ready
+  ) {
     return false;
   }
   if (!get().connected) {
@@ -863,27 +889,34 @@ function receiveEvent(event: StreamEvent) {
 export const retrySend = (row: Row, onCreated?: (id: string) => void) =>
   row.failed ? send(row.content || "", row, onCreated, row.images, row.uploads) : false;
 
+// 重发一条失败的用户消息：内容、图片与附件都沿用原记录，只换新的发送时机。
+export function resendFailed(key: string, onCreated?: (id: string) => void): boolean {
+  const row = get().messages.find((message) => message.key === key && message.failed);
+  if (!row || row.item.type !== "message") {
+    return false;
+  }
+  const images = row.item.content
+    .filter((part) => part.type === "input_image")
+    .map((part) => part.image_url);
+  return send(
+    itemText(row.item),
+    { key, kind: "user", content: itemText(row.item), failed: true },
+    onCreated,
+    images,
+    row.uploads ?? [],
+  );
+}
+
 export async function branchThread(messageId: number): Promise<string | null> {
-  const { currentId, busy, branchingMessageId, generation, viewSeq } = get();
-  if (
-    !currentId ||
-    busy ||
-    branchingMessageId ||
-    !Number.isSafeInteger(messageId) ||
-    messageId <= 0
-  ) {
+  const { currentId, branchingMessageId, viewSeq } = get();
+  if (!currentId || branchingMessageId || !Number.isSafeInteger(messageId) || messageId <= 0) {
     return null;
   }
   set({ branchingMessageId: messageId });
   try {
     const session = await api.post<Thread>(`${url(currentId)}/branches`, { message_id: messageId });
     set((state) => ({ threads: upsertThread(state.threads, session) }));
-    if (
-      get().generation !== generation ||
-      get().currentId !== currentId ||
-      get().viewSeq !== viewSeq ||
-      get().busy
-    ) {
+    if (get().currentId !== currentId || get().viewSeq !== viewSeq) {
       return null;
     }
     return session.id;
@@ -892,6 +925,24 @@ export async function branchThread(messageId: number): Promise<string | null> {
     return null;
   } finally {
     set({ branchingMessageId: 0 });
+  }
+}
+
+export async function recallMessage(id: string, messageId: number, lastMessageId: number) {
+  if (get().busy || get().recallingMessageId || get().currentId !== id) {
+    throw new Error("请先停止生成");
+  }
+  set({ recallingMessageId: messageId });
+  try {
+    const result = await api.post<{
+      draft: { text: string; attachments: UploadAttachment[] };
+      session: Thread;
+      cursor: number;
+    }>(`${url(id)}/messages/${messageId}/recall`, { last_message_id: lastMessageId });
+    applyRecall(result.session, result.cursor);
+    return result.draft;
+  } finally {
+    set({ recallingMessageId: 0 });
   }
 }
 

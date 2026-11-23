@@ -28,21 +28,46 @@ export default async function post(req, res, context, id) {
   if (answer.type !== "message" || answer.role !== "assistant") {
     fail(400, "只能从 AI 回答创建分支");
   }
-  const pending = new Set();
-  const messages = rows.map((row) => {
+  const pending = new Map();
+  const history = rows.map((row) => {
     const item = JSON.parse(row.item);
     if (item.type === "function_call") {
-      pending.add(item.call_id);
+      pending.set(item.call_id, row.id);
     } else if (item.type === "function_call_output") {
       if (!pending.delete(item.call_id)) {
         fail(409, "对话的工具记录不完整，无法创建分支");
       }
     }
-    return { ...row, item, meta: row.meta ? JSON.parse(row.meta) : {} };
+    return { ...row, item, meta: JSON.parse(row.meta) || {} };
   });
   if (pending.size) {
-    fail(409, "该回答之前的工具调用尚未完成，无法创建分支");
+    const following = db
+      .prepare(
+        `
+      SELECT json_extract(item, '$.call_id') AS call_id, json_extract(item, '$.type') AS type FROM messages
+      WHERE session_id = ? AND id > ?
+        AND json_extract(item, '$.type') IN ('function_call', 'function_call_output')
+      ORDER BY id
+    `,
+      )
+      .all(id, message_id);
+    const crossing = new Set();
+    const laterCalls = new Set();
+    for (const row of following) {
+      if (row.type === "function_call") {
+        laterCalls.add(row.call_id);
+      } else if (pending.has(row.call_id) && !laterCalls.has(row.call_id)) {
+        crossing.add(row.call_id);
+      }
+    }
+    if (crossing.size !== pending.size) {
+      fail(409, "对话的工具记录不完整，无法创建分支");
+    }
   }
+  // 回答可能位于同一轮工具调用之间。越过分支点才闭合的调用不进入新会话。
+  const messages = history.filter(
+    (row) => row.item.type !== "function_call" || pending.get(row.item.call_id) !== row.id,
+  );
   const summaries = db
     .prepare(
       "SELECT through_id, summary, created_at FROM compactions WHERE session_id = ? AND through_id <= ? AND created_at <= ? ORDER BY id",

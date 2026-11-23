@@ -6,6 +6,7 @@ export const labels: Record<string, string> = {
   cancelled: "已停止",
   interrupted: "已中断",
 };
+
 export function active(record: { status: string }) {
   return record.status === "running" || record.status === "cancelling";
 }

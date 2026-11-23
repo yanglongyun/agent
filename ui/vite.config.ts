@@ -1,4 +1,5 @@
 import react from "@vitejs/plugin-react";
+import { fileURLToPath, URL } from "node:url";
 import { defineConfig } from "vite";
 
 // 开发时 vite 只管界面,接口代理到本机运行的 agent serve。
@@ -7,6 +8,9 @@ const target = process.env.AGENT_API || "http://127.0.0.1:9500";
 
 export default defineConfig({
   plugins: [react()],
+  resolve: {
+    alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) },
+  },
   build: {
     outDir: "dist",
     emptyOutDir: true,

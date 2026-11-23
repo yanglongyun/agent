@@ -1,115 +1,21 @@
 import { useEffect, useRef, useState } from "react";
 import { labels, active, statusTone } from "./status";
-import { ProcessDetail, type ShellJob } from "./Processes";
-import { Sheet } from "../overlay/Sheet";
-import { api } from "../lib/api";
-import { Icon } from "../icons/Icon";
-import { renderMd } from "../thread/format";
-import { buildRows, mergeMessages, type RawMessage, type Compaction } from "../thread/thread";
-import { ToolItem, ThinkItem } from "../thread/Process";
-import { Usage } from "../thread/Usage";
-import { AttachmentInfo } from "../thread/AttachmentInfo";
-import { costLabel, type OwnerCost } from "../thread/metering";
-import { updateSessionCost } from "../thread/store";
+import { ProcessDetail } from "./Processes";
+import { Dialog } from "@/overlay/Dialog";
+import { api } from "@/lib/api";
+import { Icon } from "@/icons/Icon";
+import { useT } from "@/i18n";
+import { renderMd } from "@/chat/format";
+import { projectRows } from "@/chat/store";
+import { ThinkItem, ToolItem } from "@/chat/Process";
+import { isImage } from "@/chat/attachments";
+import { AttachmentImage } from "@/chat/AttachmentImage";
+import { mergeMessages, type RawMessage, type Compaction } from "@/thread/thread";
+import { costLabel } from "@/thread/metering";
+import type { SessionActivity, Task } from "./activity";
 
-export interface Task extends OwnerCost {
-  id: string;
-  session_id: string;
-  parent_task_id: string | null;
-  task: string;
-  model: string;
-  status: string;
-  result: string | null;
-  error: string | null;
-}
-
-export interface SessionActivity {
-  tasks: Task[];
-  processes: ShellJob[];
-  error: string;
-  runningCount: number;
-  totalCount: number;
-  totalCost: OwnerCost;
-  updateTask: (task: Task) => void;
-  updateProcess: (record: ShellJob) => void;
-}
-
-export function useSessionActivity(sessionId: string, busy: boolean): SessionActivity {
-  const [tasks, setTasks] = useState<Task[]>([]);
-  const [processes, setProcesses] = useState<ShellJob[]>([]);
-  const [error, setError] = useState("");
-  useEffect(() => {
-    setTasks([]);
-    setProcesses([]);
-    setError("");
-    if (!sessionId) {
-      return;
-    }
-    let current = true;
-    let timer: ReturnType<typeof setTimeout>;
-    async function load() {
-      try {
-        const [result, commands] = await Promise.all([
-          api.get<{ tasks: Task[]; session: OwnerCost & { id: string } }>(
-            `/api/tasks?session_id=${encodeURIComponent(sessionId)}`,
-          ),
-          api.get<{ processes: ShellJob[] }>(
-            `/api/processes?session_id=${encodeURIComponent(sessionId)}`,
-          ),
-        ]);
-        if (!current) {
-          return;
-        }
-        setTasks(result.tasks);
-        updateSessionCost(result.session);
-        setProcesses(commands.processes);
-        setError("");
-        if (busy || result.tasks.some(active) || commands.processes.some(active)) {
-          timer = setTimeout(() => void load(), 1500);
-        }
-      } catch (failure) {
-        if (current) {
-          setError(failure instanceof Error ? failure.message : "任务读取失败");
-          timer = setTimeout(() => void load(), 3000);
-        }
-      }
-    }
-    void load();
-    return () => {
-      current = false;
-      clearTimeout(timer);
-    };
-  }, [sessionId, busy]);
-
-  const runningCount = tasks.filter(active).length + processes.filter(active).length;
-  const totalCount = tasks.length + processes.length;
-  const totalCost: OwnerCost = {
-    cost: { amount: 0, currency: "USD", unpriced_requests: 0 },
-    request_count: 0,
-  };
-  let nano = 0;
-  for (const task of tasks) {
-    nano += Math.round(task.cost.amount * 1e9);
-    totalCost.cost.unpriced_requests += task.cost.unpriced_requests;
-    totalCost.request_count += task.request_count;
-  }
-  totalCost.cost.amount = nano / 1e9;
-  return {
-    tasks,
-    processes,
-    error,
-    runningCount,
-    totalCount,
-    totalCost,
-    updateTask: (task) =>
-      setTasks((current) => current.map((row) => (row.id === task.id ? task : row))),
-    updateProcess: (record) =>
-      setProcesses((current) => current.map((row) => (row.id === record.id ? record : row))),
-  };
-}
-
-// 后台任务（子 Agent）与后台命令各是一个独立弹窗，由标题栏右上角的两个入口分别打开。
-export function TasksSheet({
+// 后台任务（子 Agent）与后台命令各是一个独立弹窗，由标题栏菜单的入口分别打开。
+export function TasksDialog({
   kind,
   activity,
   onClose,
@@ -118,6 +24,7 @@ export function TasksSheet({
   activity: SessionActivity;
   onClose: () => void;
 }) {
+  const t = useT();
   const [selected, setSelected] = useState<{ id: string; kind: "agent" | "shell" } | null>(null);
   const { tasks, processes, error, totalCost, updateTask, updateProcess } = activity;
   const agent = kind === "agent";
@@ -125,27 +32,28 @@ export function TasksSheet({
   const runningCount = agent ? tasks.filter(active).length : processes.filter(active).length;
   let subtitle = "";
   if (count > 0) {
-    const statusText = runningCount > 0 ? `${runningCount} 项执行中` : "全部已结束";
+    const statusText =
+      runningCount > 0 ? t("tasks.running", { n: runningCount }) : t("tasks.allFinished");
     subtitle = agent ? `${statusText} · ${costLabel(totalCost)}` : statusText;
   }
 
   return (
     <>
-      <Sheet title={agent ? "后台任务" : "后台命令"} className="wide" onClose={onClose}>
-        {error && <p className="sheet-error">{error}</p>}
+      <Dialog
+        title={agent ? t("tasks.title") : t("processes.title")}
+        className="modal-tasks"
+        close={onClose}
+      >
+        {error && <p className="modal-error">{error}</p>}
         {count === 0 ? (
           <div className="empty">
-            <Icon name={agent ? "bot" : "terminal"} size={24} />
-            <strong>{agent ? "还没有后台任务" : "还没有后台命令"}</strong>
-            <span>
-              {agent
-                ? "这个对话委派的子 Agent 任务会出现在这里。"
-                : "这个对话启动的后台命令会出现在这里。"}
-            </span>
+            <Icon name={agent ? "branch" : "terminal"} size={24} />
+            <strong>{agent ? t("tasks.none") : t("processes.none")}</strong>
+            <span>{agent ? t("tasks.noneHint") : t("processes.noneHint")}</span>
           </div>
         ) : (
           <>
-            <p className="sheet-note tasks-sub">{subtitle}</p>
+            <p className="tasks-sub">{subtitle}</p>
             <ul className="card tasks-list">
               {agent &&
                 tasks.map((task) => (
@@ -156,18 +64,18 @@ export function TasksSheet({
                       onClick={() => setSelected({ id: task.id, kind: "agent" })}
                     >
                       <span className="task-icon">
-                        <Icon name="bot" size={16} />
+                        <Icon name="branch" size={16} />
                       </span>
                       <span className="task-main">
                         <span className="task-title clip">{task.task}</span>
                         <span className="task-sub clip">
-                          子 Agent · {task.model} · {costLabel(task)}
+                          {t("tasks.subAgent")} · {task.model} · {costLabel(task)}
                         </span>
                       </span>
                       <span className={`badge ${statusTone(task.status)}`}>
                         {labels[task.status]}
                       </span>
-                      <Icon name="chev" size={14} />
+                      <Icon name="chevronRight" size={14} />
                     </button>
                   </li>
                 ))}
@@ -185,20 +93,23 @@ export function TasksSheet({
                       <span className="task-main">
                         <span className="task-title mono clip">{record.command}</span>
                         <span className="task-sub clip">
-                          后台命令{record.exit_code !== null ? ` · 退出码 ${record.exit_code}` : ""}
+                          {t("processes.command")}
+                          {record.exit_code !== null
+                            ? ` · ${t("processes.exitCode", { code: record.exit_code })}`
+                            : ""}
                         </span>
                       </span>
                       <span className={`badge ${statusTone(record.status)}`}>
                         {labels[record.status]}
                       </span>
-                      <Icon name="chev" size={14} />
+                      <Icon name="chevronRight" size={14} />
                     </button>
                   </li>
                 ))}
             </ul>
           </>
         )}
-      </Sheet>
+      </Dialog>
       {selected?.kind === "agent" && (
         <TaskDetail
           taskId={selected.id}
@@ -230,6 +141,7 @@ function TaskDetail({
   onOpen: (id: string) => void;
   onChanged: (task: Task) => void;
 }) {
+  const t = useT();
   const currentTask = useRef(taskId);
   const oldestLoaded = useRef<number | null>(null);
   const [task, setTask] = useState<Task | null>(null);
@@ -278,7 +190,7 @@ function TaskDetail({
         }
       } catch (failure) {
         if (current) {
-          setError(failure instanceof Error ? failure.message : "任务读取失败");
+          setError(failure instanceof Error ? failure.message : t("tasks.loadFailed"));
         }
       }
     }
@@ -302,7 +214,7 @@ function TaskDetail({
       }
     } catch (failure) {
       if (currentTask.current === requestedTask) {
-        setError(failure instanceof Error ? failure.message : "停止失败");
+        setError(failure instanceof Error ? failure.message : t("tasks.stopFailed"));
       }
     } finally {
       if (currentTask.current === requestedTask) {
@@ -328,7 +240,7 @@ function TaskDetail({
       setHasMore(page.has_more);
     } catch (failure) {
       if (currentTask.current === requestedTask) {
-        setError(failure instanceof Error ? failure.message : "消息读取失败");
+        setError(failure instanceof Error ? failure.message : t("tasks.loadFailed"));
       }
     } finally {
       if (currentTask.current === requestedTask) {
@@ -337,28 +249,12 @@ function TaskDetail({
     }
   }
   const visible = messages.filter((row) => showInherited || !row.meta?.inherited);
-  const rows = buildRows(visible, compactions);
+  const rows = projectRows(visible, compactions, [], false);
   return (
-    <Sheet
-      title="子任务"
-      className="xwide"
-      onClose={onClose}
-      footer={
-        task && active(task) ? (
-          <button
-            type="button"
-            className="btn btn-danger-quiet"
-            disabled={stopping || task.status === "cancelling"}
-            onClick={() => void stop()}
-          >
-            {stopping || task.status === "cancelling" ? "正在停止…" : "停止任务"}
-          </button>
-        ) : undefined
-      }
-    >
-      {error && <p className="sheet-error">{error}</p>}
+    <Dialog title={t("tasks.detail")} className="modal-xwide" close={onClose}>
+      {error && <p className="modal-error">{error}</p>}
       {!task ? (
-        <p className="note">{error ? "" : "正在读取任务…"}</p>
+        <p className="note">{error ? "" : t("tasks.loading")}</p>
       ) : (
         <>
           <div className="task-brief">
@@ -366,7 +262,7 @@ function TaskDetail({
             <div className="pill-row">
               <span className={`badge ${statusTone(task.status)}`}>{labels[task.status]}</span>
               <span className="pill mono">{task.model}</span>
-              <span className="pill">{task.request_count} 次请求</span>
+              <span className="pill">{t("tasks.requests", { n: task.request_count })}</span>
               <span className="pill">{costLabel(task)}</span>
               {task.parent_task_id && (
                 <button
@@ -374,12 +270,12 @@ function TaskDetail({
                   className="text-link task-parent"
                   onClick={() => onOpen(task.parent_task_id!)}
                 >
-                  查看父任务
+                  {t("tasks.parent")}
                 </button>
               )}
             </div>
           </div>
-          {task.error && <p className="sheet-error">{task.error}</p>}
+          {task.error && <p className="modal-error">{task.error}</p>}
           {messages.some((row) => row.meta?.inherited) && (
             <label className="check-row task-inherited">
               <input
@@ -387,71 +283,90 @@ function TaskDetail({
                 checked={showInherited}
                 onChange={(event) => setShowInherited(event.target.checked)}
               />
-              显示继承的上下文
+              {t("tasks.showInherited")}
             </label>
           )}
           {hasMore && (
             <button
-              className="btn btn-quiet sm task-older"
+              className="btn btn-plain task-older"
               disabled={loadingOlder}
               onClick={() => void older()}
             >
-              {loadingOlder ? "正在读取…" : "查看更早的消息"}
+              {loadingOlder ? t("common.reading") : t("tasks.older")}
             </button>
           )}
           <div className="task-transcript">
             {rows.map((row) => {
-              if (row.kind === "tool") {
-                return <ToolItem key={row.key} row={row} />;
+              if (row.role === "tool") {
+                return <ToolItem key={row._key} row={row} />;
               }
-              if (row.kind === "usage" && row.usageRecord) {
-                return <Usage key={row.key} records={[row.usageRecord]} />;
+              if (row.reasoning) {
+                return <ThinkItem key={row._key} row={row} />;
               }
-              if (row.code === "compacted") {
+              if (row.role === "system") {
                 return (
-                  <details key={row.key} className="task-summary">
-                    <summary>历史摘要</summary>
+                  <details key={row._key} className="task-summary">
+                    <summary>{t("tasks.summary")}</summary>
                     <div
                       className="md"
-                      dangerouslySetInnerHTML={{ __html: renderMd(row.content || "") }}
+                      dangerouslySetInnerHTML={{
+                        __html: renderMd(row.content || ""),
+                      }}
                     />
-                    {row.usageRecord && <Usage records={[row.usageRecord]} />}
                   </details>
                 );
               }
-              if (row.reasoning) {
-                return <ThinkItem key={row.key} row={row} />;
-              }
               return (
-                <article key={row.key} className={`task-message ${row.kind}`}>
-                  <small>{row.kind === "user" ? "任务输入" : "Agent"}</small>
+                <article key={row._key} className={`task-message ${row.role}`}>
+                  <small>{row.role === "user" ? t("tasks.input") : "Agent"}</small>
                   <div
                     className="md"
-                    dangerouslySetInnerHTML={{ __html: renderMd(row.content || "") }}
+                    dangerouslySetInnerHTML={{
+                      __html: renderMd(row.content || ""),
+                    }}
                   />
-                  {row.images?.map((url) => (
-                    <img key={url} src={url} alt="任务图片" />
-                  ))}
-                  {row.attachments && row.attachments.length > 0 && (
-                    <div className="message-attachments">
-                      {row.attachments.map((file, index) => (
-                        <a
-                          key={index}
-                          href={file.url}
-                          className="attachment-card"
-                          download={file.name}
-                        >
-                          <AttachmentInfo file={file} />
-                        </a>
-                      ))}
+                  {!!row.attachments?.length && (
+                    <div className="msg-attachments">
+                      {row.attachments.map((attachment) =>
+                        isImage(attachment) ? (
+                          <AttachmentImage key={attachment.id} image={attachment} />
+                        ) : attachment.url ? (
+                          <a
+                            key={attachment.id}
+                            href={attachment.url}
+                            className="msg-file"
+                            download={attachment.name}
+                          >
+                            <Icon name="file" size={16} />
+                            {attachment.name}
+                          </a>
+                        ) : (
+                          <span className="msg-file" key={attachment.id}>
+                            <Icon name="file" size={16} />
+                            {attachment.name}
+                          </span>
+                        ),
+                      )}
                     </div>
                   )}
                 </article>
               );
             })}
           </div>
+          {active(task) && (
+            <div className="modal-foot">
+              <button
+                type="button"
+                className="btn btn-danger"
+                disabled={stopping || task.status === "cancelling"}
+                onClick={() => void stop()}
+              >
+                {stopping || task.status === "cancelling" ? t("tasks.stopping") : t("tasks.stop")}
+              </button>
+            </div>
+          )}
         </>
       )}
-    </Sheet>
+    </Dialog>
   );
 }

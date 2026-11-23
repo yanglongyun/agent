@@ -1,6 +1,9 @@
-/* 任务与后台命令：列表弹窗、子任务详情、后台命令详情。 */
+/* 后台任务与后台命令弹窗。 */
+
 .tasks-sub {
-  margin-bottom: 12px;
+  margin: 0 2px 12px;
+  color: var(--ink-3);
+  font-size: 12.5px;
 }
 .tasks-list {
   margin: 0;
@@ -9,7 +12,7 @@
   list-style: none;
 }
 .tasks-list li + li {
-  border-top: 1px solid var(--edge);
+  border-top: 1px solid var(--line-soft);
 }
 .task-open {
   display: flex;
@@ -21,10 +24,10 @@
   transition: background 0.14s;
 }
 .task-open:hover {
-  background: var(--tint-1);
+  background: var(--surface-hover);
 }
 .task-open > svg {
-  color: var(--text-4);
+  color: var(--ink-4);
 }
 .task-icon {
   display: grid;
@@ -32,9 +35,9 @@
   flex-shrink: 0;
   width: 32px;
   height: 32px;
-  border-radius: var(--r-2);
-  background: var(--tint-2);
-  color: var(--text-2);
+  border-radius: var(--r-m);
+  background: var(--select-flat);
+  color: var(--ink2);
 }
 .task-main {
   display: flex;
@@ -44,7 +47,7 @@
   min-width: 0;
 }
 .task-title {
-  color: var(--text-1);
+  color: var(--ink);
   font-size: 13.5px;
   font-weight: 550;
 }
@@ -52,9 +55,10 @@
   font-size: 12.5px;
 }
 .task-sub {
-  color: var(--text-3);
+  color: var(--ink-3);
   font-size: 12px;
 }
+
 .task-brief {
   display: flex;
   flex-direction: column;
@@ -65,17 +69,15 @@
   max-height: 168px;
   padding: 12px 14px;
   overflow: auto;
-  border-radius: var(--r-3);
-  background: var(--tint-1);
-  color: var(--text-1);
+  border-radius: var(--r-l);
+  background: var(--well);
+  color: var(--ink);
   font-size: 14px;
   line-height: 1.7;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+  -webkit-user-select: text;
   user-select: text;
-}
-.task-brief .pill-row {
-  align-items: center;
 }
 .task-parent {
   margin-left: 4px;
@@ -93,7 +95,7 @@
   flex-direction: column;
   gap: 6px;
   padding-top: 14px;
-  border-top: 1px solid var(--edge);
+  border-top: 1px solid var(--line-soft);
 }
 .task-message {
   min-width: 0;
@@ -102,28 +104,24 @@
 .task-message > small {
   display: block;
   margin-bottom: 4px;
-  color: var(--text-4);
+  color: var(--ink-4);
   font-size: 12px;
   font-weight: 600;
 }
 .task-message .md {
   font-size: 14px;
 }
-.task-message img {
-  display: block;
-  max-width: 100%;
-  max-height: 480px;
+.task-message .msg-attachments {
   margin-top: 8px;
-  border-radius: var(--r-2);
 }
 .task-summary {
   padding: 10px 14px;
-  border-radius: var(--r-3);
-  background: var(--tint-1);
+  border-radius: var(--r-l);
+  background: var(--well);
   font-size: 13px;
 }
 .task-summary summary {
-  color: var(--text-2);
+  color: var(--ink2);
   font-weight: 550;
   cursor: pointer;
 }
@@ -131,6 +129,7 @@
   margin-top: 10px;
   font-size: 13.5px;
 }
+
 .process-command {
   max-height: 140px;
   font-size: 12.5px;
@@ -140,12 +139,12 @@
   align-items: baseline;
   justify-content: space-between;
   margin-bottom: 6px;
-  color: var(--text-2);
+  color: var(--ink2);
   font-size: 12.5px;
   font-weight: 550;
 }
 .process-label small {
-  color: var(--text-4);
+  color: var(--ink-4);
   font-size: 12px;
   font-weight: 400;
 }
@@ -159,8 +158,67 @@
   gap: 8px;
   margin-top: 16px;
 }
+.process-input textarea {
+  resize: vertical;
+}
 .process-input > div {
   display: flex;
   justify-content: flex-end;
   gap: 6px;
+}
+
+/* 对话详情里的各模型消耗 */
+.model-usage {
+  margin-top: 18px;
+}
+.model-usage h3 {
+  margin: 0 0 8px;
+  color: var(--ink-3);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+.usage-card {
+  display: flex;
+  flex-direction: column;
+}
+.usage-row {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 16px;
+}
+.usage-row + .usage-row {
+  border-top: 1px solid var(--line-soft);
+}
+.usage-row-head {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  font-size: 13.5px;
+  font-variant-numeric: tabular-nums;
+}
+.usage-row-head b {
+  flex: 1;
+  min-width: 0;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.usage-row-head b.mono {
+  font-size: 12.5px;
+}
+.usage-row-count {
+  flex-shrink: 0;
+  color: var(--ink-3);
+  font-size: 12.5px;
+}
+.usage-row-cost {
+  flex-shrink: 0;
+  min-width: 76px;
+  font-weight: 600;
+  text-align: right;
+}
+@media (max-width: 860px) {
+  .usage-row-head {
+    flex-wrap: wrap;
+  }
 }

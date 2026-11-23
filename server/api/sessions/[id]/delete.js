@@ -12,6 +12,9 @@ export default async function remove(req, res, context, id) {
   }
   await context.tasks.cancelChildren({ sessionId: id });
   await context.tasks.shell.cancelScope({ sessionId: id });
+  if (context.recalling.has(id) || context.replies.get(id)?.running) {
+    fail(409, "对话正在更新");
+  }
   const db = context.db;
   // 用户上传和工具图片都属于当前会话；删除记录前先取出文件名。
   const images = db

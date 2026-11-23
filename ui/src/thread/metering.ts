@@ -29,6 +29,22 @@ const labels: Record<string, string> = {
   cache_creation_input_tokens: "缓存写入",
 };
 
+export function tokenChips(tokens: Iterable<[string, number]>) {
+  return [...tokens]
+    .filter(
+      ([key, value]) =>
+        value > 0 ||
+        [
+          "input_tokens",
+          "output_tokens",
+          "prompt_tokens",
+          "completion_tokens",
+          "total_tokens",
+        ].includes(key),
+    )
+    .map(([key, value]) => `${labels[key] || key} ${value.toLocaleString("en-US")}`);
+}
+
 export function usageSummary(records: UsageRecord[]) {
   const tokens = new Map<string, number>();
   const costs = new Map<string, number>();
@@ -52,19 +68,7 @@ export function usageSummary(records: UsageRecord[]) {
     }
   }
   return {
-    tokens: [...tokens]
-      .filter(
-        ([key, value]) =>
-          value > 0 ||
-          [
-            "input_tokens",
-            "output_tokens",
-            "prompt_tokens",
-            "completion_tokens",
-            "total_tokens",
-          ].includes(key),
-      )
-      .map(([key, value]) => `${labels[key] || key} ${value.toLocaleString("en-US")}`),
+    tokens: tokenChips(tokens),
     costs: [...costs].map(([currency, amount]) => {
       const formatted = amount.toLocaleString("en-US", {
         minimumFractionDigits: 4,

@@ -37,15 +37,6 @@ server/
           post.js            发送消息、接收 Agent 事件、保存消息和压缩记录
         compactions/index.js 查询压缩记录
         cancel/index.js      取消当前回复
-    notes/
-      index.js               分发 HTTP 方法或进入 [id]
-      get.js                 笔记列表
-      post.js                新建笔记
-      [id]/
-        index.js             分发笔记方法
-        get.js               笔记详情
-        put.js               保存标题和正文
-        delete.js            删除笔记
     config/
       index.js               分发 GET / PUT
       get.js                 查看配置
@@ -208,7 +199,11 @@ CREATE INDEX idx_compactions_session ON compactions(session_id, id);
 
 会话支持置顶。`sessions.pinned` 为 NULL 表示未置顶，非空是置顶组内的序号（升序，新置顶的排最前）；列表按「置顶在前，其余按最近活动」排序，置顶不改变活动时间，分支不继承置顶。侧栏的置顶组可以拖拽：鼠标拖动、触屏长按约 0.4 秒后拖动，在组内排序、从其余会话拖入置顶、拖回其余区域取消置顶；靠近列表边缘自动滚动，搜索时不可拖拽。会话菜单里也有「置顶 / 取消置顶」。拖拽通过 `PUT /api/sessions/pinned` 一次提交完整顺序，前端先乐观更新，失败回滚；变化经全局 SSE 同步到其他页面。
 
-每条 AI 回答下面常显三个图标：复制、「从此处创建分支」和信息（用量与费用）。信息弹窗最前面是本轮消耗金额和所用模型，随后是请求数与 token 合计；对话中途可以切换模型，所以每次请求单独一行，标注当次所用模型、金额和 token（模型取自该次请求保存的计量快照）；最后是原始 usage 数组。分支复制截至该回答的对话、工具记录、图片及当时已有的摘要，创建后打开新对话，标题为「原标题（2）」，同名时递增编号。图片独立保存，删除原对话不会影响分支；历史环境快照保持原样。继承内容不重复计费，分支累计费用从零开始，不复制原对话中的运行任务或命令。接口为 `POST /api/sessions/:id/branches`，请求体 `{ "message_id": 回答消息ID }`。
+每条 AI 回答下面常显三个图标：复制、「从此回答创建分支」和信息（用量与费用）。信息弹窗最前面是本轮消耗金额和所用模型，随后是请求数与 token 合计；对话中途可以切换模型，所以每次请求单独一行，标注当次所用模型、金额和 token（模型取自该次请求保存的计量快照）；最后是原始 usage 数组。分支复制截至该回答的对话、已结束的工具调用、附件及当时已有的摘要，创建后打开新对话，标题为「原标题（2）」，同名时递增编号。图片独立保存，删除原对话不会影响分支；历史环境快照保持原样。继承内容不重复计费，分支累计费用从零开始，不复制原对话中的运行任务或命令。接口为 `POST /api/sessions/:id/branches`，请求体 `{ "message_id": 回答消息ID }`。
+
+已保存的助手正文都能创建分支，包括折叠过程里的中间回答。原对话正在生成时，也能从已保存的回答创建分支。
+
+用户消息的「撤回」打开确认弹窗。确认后，移除这条消息和后续历史，原消息的文字和附件回到输入框。弹窗会说明已有草稿将被替换。生成中的回复需要先停止。
 
 模型响应的 `usage` 按厂商原样保存，Claude 不补 total_tokens 或改写 input_tokens；Chat 保留 prompt_tokens、completion_tokens 及其原生明细，不改名。`server/metering/index.js` 负责压缩用量和费用计算，`server/metering/rules.js` 维护模型标价；支持 gpt-6-luna、gpt-6.1-terra、gpt-6.1-sol（Responses 和 Chat 共用同一份模型价格）、deepseek-flash（按高峰与平峰时段）、claude-fable-5-2、claude-sonnet-5-5、claude-opus-5-5、gemini-4-hydrogen、gemini-4-carbon、gemini-4-argon。
 
@@ -224,31 +219,29 @@ sessions 和 tasks 的 total_cost_nanos 以十亿分之一美元累计已记录�
 
 接口使用登录 Cookie 或 `Authorization: Bearer <访问令牌>`。
 
-| 方法                 | 路径                                                  | 用途                                                                                         |
-| -------------------- | ----------------------------------------------------- | -------------------------------------------------------------------------------------------- |
-| POST                 | `/api/auth/login`                                     | `{ token }` 登录                                                                             |
-| POST                 | `/api/auth/logout`                                    | 退出                                                                                         |
-| GET                  | `/api/auth/me`                                        | 登录状态                                                                                     |
-| GET                  | `/api/status`                                         | 模型配置状态、版本、工作目录                                                                 |
-| GET / PUT            | `/api/config`                                         | 查看 / 保存配置                                                                              |
-| GET / HEAD           | `/api/attachments/:id`                                | 下载已保存的普通附件                                                                         |
-| GET / HEAD           | `/api/images/:name`                                   | 查看已保存的图片                                                                             |
-| GET / POST           | `/api/sessions`                                       | 列表 / 新建 `{ title? }`                                                                     |
-| PUT                  | `/api/sessions/pinned`                                | `{ ids }` 一次设定整个置顶组：顺序即显示顺序，不在列表里的取消置顶                           |
-| GET / PATCH / DELETE | `/api/sessions/:id`                                   | 查看 / 改名或置顶 `{ title?, pinned? }` / 删除                                               |
-| GET                  | `/api/sessions/:id/messages?before=123&limit=60`      | 历史消息                                                                                     |
-| POST                 | `/api/sessions/:id/messages`                          | `{ text, model_id, compact_model_id, images?, attachments? }` 发消息，返回 202 JSON          |
-| GET                  | `/api/events`                                         | 全局 SSE，复用所有会话的事件                                                                 |
-| GET                  | `/api/logs/summary?since=`                            | 用量总览：总计、按来源（对话 / 子任务 / 压缩）、按模型的 token 与费用                        |
-| GET                  | `/api/logs/owners?kind=&q=&parent=&limit=&before=`    | 日志里的对话和子任务列表，q 搜索标题、ID 和消息内容                                          |
-| GET                  | `/api/logs/records?kind=&id=&type=&q=&before=&limit=` | 某个对话或子任务的全部记录、压缩摘要与终身汇总；对话另有含子任务、按模型拆开的 total_summary |
-| POST                 | `/api/sessions/:id/cancel`                            | 停止并等待当前回复清理完成                                                                   |
-| GET                  | `/api/sessions/:id/compactions`                       | 压缩记录                                                                                     |
-| GET / POST           | `/api/notes`                                          | 笔记列表 / 新建 `{ title?, body? }`                                                          |
-| GET / PUT / DELETE   | `/api/notes/:id`                                      | 查看 / 保存 `{ title?, body? }` / 删除笔记                                                   |
-| GET                  | `/healthz`                                            | 服务存活检查                                                                                 |
+| 方法                 | 路径                                             | 用途                                                                                |
+| -------------------- | ------------------------------------------------ | ----------------------------------------------------------------------------------- |
+| POST                 | `/api/auth/login`                                | `{ token }` 登录                                                                    |
+| POST                 | `/api/auth/logout`                               | 退出                                                                                |
+| GET                  | `/api/auth/me`                                   | 登录状态                                                                            |
+| GET                  | `/api/status`                                    | 模型配置状态、工作目录                                                              |
+| GET / PUT            | `/api/config`                                    | 查看 / 保存配置                                                                     |
+| GET / HEAD           | `/api/attachments/:id`                           | 下载已保存的普通附件                                                                |
+| GET / HEAD           | `/api/images/:name`                              | 查看已保存的图片                                                                    |
+| GET / POST           | `/api/sessions`                                  | 列表 / 新建 `{ title? }`                                                            |
+| PUT                  | `/api/sessions/pinned`                           | `{ ids }` 一次设定整个置顶组：顺序即显示顺序，不在列表里的取消置顶                  |
+| GET / PATCH / DELETE | `/api/sessions/:id`                              | 查看 / 改名或置顶 `{ title?, pinned? }` / 删除                                      |
+| GET                  | `/api/sessions/:id/messages?before=123&limit=60` | 历史消息                                                                            |
+| POST                 | `/api/sessions/:id/messages`                     | `{ text, model_id, compact_model_id, images?, attachments? }` 发消息，返回 202 JSON |
+| POST                 | `/api/sessions/:id/branches`                     | 从已保存的助手回答创建分支，传入 `{ message_id }`                                   |
+| POST                 | `/api/sessions/:id/messages/:message_id/recall`  | 撤回用户消息及之后的历史，传入当前末条记录的 `{ last_message_id }`，返回草稿和会话  |
+| GET                  | `/api/sessions/:id/usage`                        | 当前会话按模型汇总的用量与预估费用，含子任务及摘要                                  |
+| GET                  | `/api/events`                                    | 全局 SSE，复用所有会话的事件                                                        |
+| POST                 | `/api/sessions/:id/cancel`                       | 停止并等待当前回复清理完成                                                          |
+| GET                  | `/api/sessions/:id/compactions`                  | 压缩记录                                                                            |
+| GET                  | `/healthz`                                       | 服务存活检查                                                                        |
 
-每个页面只有一条 `GET /api/events` SSE。发送消息使用普通 POST，输入保存并注册任务后立即返回 `202 { epoch, cursor, run_id, message, session }`。输出由全局流推送：`{ epoch, cursor, session_id, run_id, event }`，其中 event 仍是原有九种 Agent 事件及保存确认。某个回复的 done 不关闭全局连接。新增、改名、分支通过 `{ session }` 更新列表，删除通过 `{ deleted_session_id }` 同步。
+每个页面只有一条 `GET /api/events` SSE。发送消息使用普通 POST，输入保存并注册任务后立即返回 `202 { epoch, cursor, run_id, message, session }`。输出由全局流推送：`{ epoch, cursor, session_id, run_id, event }`，其中 event 仍是原有九种 Agent 事件及保存确认。某个回复的 done 不关闭全局连接。新增、改名、分支通过 `{ session }` 更新列表，删除通过 `{ deleted_session_id }` 同步，撤回通过 `{ session, recalled_from }` 同步历史变更。
 
 每个会话同一时间只处理一条回复；不同会话可以同时执行。回复由服务端会话持有，切换会话、刷新或关闭页面不会取消执行。切回来会恢复已保存历史和未提交的实时片段，并继续接收输出；订阅不会重发模型请求或重复计费。只有主动点击停止或服务关闭才会取消任务，回复本身没有时间上限。侧边栏在后台执行期间显示进行中。
 
@@ -297,7 +290,7 @@ npm run release:pack -- --platform linux --arch amd64
 
 平台支持 `linux / darwin / windows`，架构支持 `amd64 / arm64`。打包器下载并校验固定版本 Node.js，产物位于 `server/dist/`。安装时校验 SHA-256；`AGENT_RELEASE_BASE_URL` 可指定私有发布镜像，`AGENT_NO_SERVICE=1` 可只安装不启动。
 
-数据默认放在 Linux `~/.config/agent`、macOS `~/Library/Application Support/agent`、Windows `%APPDATA%/agent`。可用 `AGENT_HOME` 指定目录。该目录包含 `config.json`、`agent.db` 及 SQLite 日志文件。
+数据默认放在 Linux `~/.config/agent`、macOS `~/Library/Application Support/agent`、Windows `%APPDATA%/agent`。可用 `AGENT_HOME` 指定目录。该目录包含 `config.json`、`agent.db` 及 SQLite 日志文件。旧配置中的顶层 `image` 字段需在启动前手动移除。监听地址可用 CLI 参数或 `AGENT_LISTEN` 配置。
 
 ### 验证代码
 
@@ -313,29 +306,21 @@ npm run format:check
 
 ### 页面路由
 
-界面是一副三栏外壳，所有页面共用：最左是应用导航（对话、记事本、日志在上，主题切换和设置在下），中间是当前应用的列表栏，右边是内容舞台。**对话、记事本、日志、设置是并列的四个应用**，切换时回到该应用上次停留的页面（比如从日志回到刚才那个对话）。列表栏可以收起；窄屏下导航和列表栏一起收进左侧抽屉，弹窗变成底部弹层。全部页面使用同一套浅色、深色设计变量、同一套按钮、输入、分段、徽章和卡片，图标用 Lucide，Radix 提供弹窗、菜单、提示和详情浮层的键盘交互、焦点管理及视口避让。
+对话和设置共用一套导航、列表栏和内容区。切换到设置时，列表栏显示设置分区。切回对话时回到上次打开的会话。窄屏通过侧栏抽屉访问会话与设置。
 
 - **对话**：列表栏是会话列表（搜索、新对话、置顶、运行状态指示）。舞台顶部是对话标题，右上角是「更多」菜单：后台任务、后台命令（有运行中的项时按钮上带绿点）、对话详情、重命名、删除。对话详情里除了累计费用，还有「各模型消耗」，按模型分别列出请求数、金额和 token（含子任务与压缩）。消息区里用户消息是右侧气泡，回答是正文排版，代码块带语言名和复制按钮；思考和工具调用直接显示在对话里：回复进行中按顺序平铺，运行中的工具标签扫光；回复完成后整轮过程收进一条「已工作 Xs」折叠条，点开可看每一步的参数与结果，相邻的已完成工具合并成一行摘要（如「读取了 3 个文件」），最终回答留在折叠条外面。用量与费用点每条回答下面的信息图标查看，浏览历史时可回到最新消息。输入区底部工具条里添加附件、切换模型、发送或停止。新对话时输入区居中，下方有几条起手式。
-- **日志**：查询每个对话和子任务的全部记录与 token、费用，见下文「日志」。
-- **记事本**：列表栏是笔记（搜索、新建、最近修改时间），舞台是标题加正文的编辑器。输入停顿后自动保存，切换笔记或离开页面时补存还没提交的改动；标题为空时显示「未命名笔记」。
-- **设置**：列表栏是分区导航（模型、指令、上下文压缩、执行环境、外观、服务、关于、账户），滚动时高亮当前分区；有未保存的更改时底部浮出保存条，可以保存或放弃。主题也可以在应用导航底部直接切换。
+- **设置**：列表栏是分区导航（模型、指令、上下文压缩、执行环境、外观、账户），滚动时高亮当前分区；有未保存的更改时底部浮出保存条，可以保存或放弃。主题也可以在应用导航底部直接切换。
 
 输入框与附件预览参考并适配了 [Ruixen UI Claude Chat Input](https://ruixen.com/docs/components/claude-chat-input) 的免费源码，适配组件位于 `ui/src/components/ruixen/ChatInput.tsx`，MIT 许可见 [ui/public/licenses/Ruixen-UI-MIT.md](ui/public/licenses/Ruixen-UI-MIT.md)。项目继续使用 Vite 和现有 CSS 变量，不依赖 Ruixen Pro、Next.js 或 Tailwind。
 
 前端使用 React Router，页面入口定义在 `ui/src/router.tsx`。
 
-| URL                 | 页面                     |
-| ------------------- | ------------------------ |
-| `/`                 | 新对话                   |
-| `/sessions/:id`     | 指定会话                 |
-| `/logs`             | 日志（默认显示用量总览） |
-| `/logs/overview`    | 用量总览                 |
-| `/logs/session/:id` | 某个对话的日志           |
-| `/logs/task/:id`    | 某个子任务的日志         |
-| `/notes`            | 记事本                   |
-| `/notes/:id`        | 指定笔记                 |
-| `/settings`         | 设置                     |
-| `/login`            | 登录                     |
+| URL             | 页面     |
+| --------------- | -------- |
+| `/`             | 新对话   |
+| `/sessions/:id` | 指定会话 |
+| `/settings`     | 设置     |
+| `/login`        | 登录     |
 
 URL 决定当前页面和会话。支持直接打开、刷新、前进后退；新会话创建后用会话 URL 替换新对话入口。未登录时先进入登录页，登录成功后回到原页面。服务器只为这些页面路径返回 `ui/dist/index.html`（`/logs/session|task/:id` 只接受这两种类型），未知资源和 API 保持各自的错误响应。
 
@@ -356,14 +341,5 @@ URL 决定当前页面和会话。支持直接打开、刷新、前进后退；�
 后台命令跨主对话回复运行，不设自动超时；停止或删除会话、服务退出时清理命令及其子进程。子 Agent 启动的后台命令在该任务结束时清理。每个会话最多同时运行 8 条命令。Web 和 CLI 共用执行器及 shell_jobs 记录；CLI 退出前清理命令。服务意外退出后，历史记录显示已中断，不自动重启命令。
 
 界面从对话标题栏右上角「更多」菜单里的「后台任务」和「后台命令」两项分别打开子 Agent 与后台命令的弹窗（有运行中的项时按钮上显示绿点）。后台命令弹窗显示命令、工作目录、输出与退出码，可发送输入、结束输入和停止命令。stdio 操作不生成重复条目，后台命令不计模型费用。
-
-## 日志
-
-对话里按轮显示思考和工具调用，但不内联 token 与费用；需要追查用量时点回答下面的信息图标，或到「日志」应用里看。日志把**对话**和**子任务**都当作一个可查询的对象：
-
-- **列表**：按最近活动排序，可按「全部 / 对话 / 子任务」筛选，搜索框同时匹配标题、ID 和消息正文（不区分大小写，`%`、`_` 按字面匹配）。每行显示费用和时间，未计费的请求显示「未计费」而不是 $0。
-- **用量总览**：按时间范围（今天 / 近 7 天 / 近 30 天 / 全部）汇总全部请求的 token 与预估费用，并按来源（对话、子任务、上下文压缩）和模型拆开。
-- **详情**：某个对话或子任务的终身汇总（费用、请求数、token、各模型用量）、最新在前的完整记录流。记录包括用户消息、助手回答、思考、工具调用（参数）、工具结果（成功或失败）和压缩摘要；有模型请求的记录附带 token 与费用，可展开查看原始 usage、计量快照和完整记录 JSON。可按「消息 / 工具 / 思考 / 摘要 / 有用量」过滤并在这一项里搜索，更早的记录分页加载。
-- **口径**：token 按厂商原始字段原样汇总（Claude 的输入不含缓存，OpenAI 的输入含缓存），不做归一。对话的「自身费用」只含主对话和它自己的压缩，子任务各自独立计费，「含子任务合计」来自会话累计。汇总只来自 `metering` 表，每次模型请求恰好一行。
 
 接口：GET /api/processes?session_id=…、GET /api/processes/:id、POST /api/processes/:id/stdio（action 为 write、close 或 cancel，write 传 input）。

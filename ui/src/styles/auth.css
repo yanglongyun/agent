@@ -1,0 +1,103 @@
+.auth-screen {
+  min-height: 100%;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: var(--side-bg);
+  position: relative;
+  overflow: hidden;
+  -webkit-app-region: drag;
+}
+
+.auth-screen::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(480px 340px at 26% 16%, rgba(255, 75, 10, 0.045), transparent 62%),
+    radial-gradient(560px 400px at 76% 24%, rgba(255, 40, 191, 0.055), transparent 62%),
+    radial-gradient(860px 460px at 50% 92%, rgba(101, 45, 255, 0.065), transparent 62%);
+}
+.auth-card {
+  position: relative;
+  width: min(384px, 100%);
+  padding: 44px 36px 28px;
+  text-align: center;
+  background: var(--panel);
+  border-radius: 20px;
+  box-shadow:
+    0 12px 40px rgba(10, 13, 51, 0.08),
+    0 2px 8px rgba(10, 13, 51, 0.05);
+  -webkit-app-region: no-drag;
+}
+
+.auth-card > svg,
+.auth-card > img {
+  display: block;
+  margin: 0 auto;
+}
+.auth-card h1 {
+  margin: 16px 0 0;
+  font-size: 24px;
+  line-height: 32px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+.auth-sub {
+  margin: 10px 0 24px;
+  font-size: 15px;
+  line-height: 22px;
+  font-weight: 650;
+  color: var(--ink2);
+}
+
+.auth-btn {
+  width: 100%;
+  height: 40px;
+  border-radius: 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  transition: background 0.15s;
+}
+.auth-btn:disabled {
+  opacity: 0.45;
+  pointer-events: none;
+}
+.auth-btn.primary {
+  background: var(--candy);
+  color: var(--on-accent);
+}
+.auth-btn.primary:hover {
+  background: var(--candy-hover);
+}
+.auth-btn.primary:active {
+  background: var(--candy-deep);
+}
+.auth-hint {
+  margin: 14px 0 0;
+  font-size: 12px;
+  color: var(--ink-4);
+  line-height: 1.45;
+}
+
+.setup-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 0;
+}
+.auth-error {
+  margin-top: 14px;
+  font-size: 12.5px;
+  color: var(--bad);
+  line-height: 1.7;
+}

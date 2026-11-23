@@ -70,6 +70,17 @@ export default [
     ],
   },
   {
+    model: "claude-haiku-5-5",
+    protocols: ["anthropic-messages"],
+    reference: "https://platform.claude.com/docs/en/models/haiku-5-5/overview",
+    currency: "USD",
+    checked: "2026-11-19",
+    rates: [
+      { through: 100_000, input: 0.1, output: 0.5, cached: 0.01, write: 0.125, write_long: 0.2 },
+      { through: null, input: 0.5, output: 2.5, cached: 0.05, write: 0.625, write_long: 1 },
+    ],
+  },
+  {
     model: "claude-fable-5-2",
     protocols: ["anthropic-messages"],
     reference: "https://platform.claude.com/docs/en/about-claude/pricing",
@@ -92,6 +103,26 @@ export default [
     currency: "USD",
     checked: "2026-11-10",
     rates: [{ through: null, input: 4, output: 20, cached: 0.2, write: 5, write_long: 8 }],
+  },
+  {
+    model: "gemini-3.1-pro-preview",
+    protocols: ["chat-completions"],
+    reference: "https://ai.google.dev/gemini-api/docs/pricing#gemini-3.1-pro-preview",
+    currency: "USD",
+    checked: "2026-11-19",
+    rates: [
+      { through: 200_000, input: 2, output: 12, cached: 0.2, write: 0, write_long: 0 },
+      { through: null, input: 4, output: 18, cached: 0.4, write: 0, write_long: 0 },
+    ],
+  },
+  {
+    model: "gemini-4-neon",
+    protocols: ["chat-completions"],
+    reference:
+      "https://blog.google/innovation-and-ai/models-and-research/gemini-models/introducing-gemini-4-neon/",
+    currency: "USD",
+    checked: "2026-11-19",
+    rates: [{ through: null, input: 3, output: 15, cached: 0.15, write: 0, write_long: 0 }],
   },
   {
     model: "gemini-4-hydrogen",

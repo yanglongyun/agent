@@ -1,7 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { buildRows, mergeMessages, type RawMessage } from "../src/thread/thread";
-import { buildBlocks } from "../src/thread/blocks";
+import { buildTurns } from "../src/chat/turns";
+import { projectRows } from "../src/chat/store";
 import { checkAuth, logout, useAuth } from "../src/lib/auth";
 import {
   send,
@@ -25,23 +26,7 @@ import {
 } from "../src/thread/store";
 import type { StreamEvent, GlobalFrame } from "../src/thread/stream";
 import { validateAttachments, isImageAttachment } from "../src/thread/attachments";
-import { nextPinnedIds, samePinnedIds } from "../src/shell/pinned";
-import { appForPath, launchPath, matchApp, rememberLocation, apps } from "../src/shell/apps";
-import {
-  costParts,
-  costShort,
-  costText,
-  describeCompaction,
-  describeMessage,
-  listTime,
-  ownerTitle,
-  rangeSince,
-  tokenChips,
-  tokensOf,
-  usd,
-} from "../src/logs/format";
 import { copyText } from "../src/lib/clipboard";
-import { notePreview, noteTime, noteTitle } from "../src/notes/format";
 import { usageSummary, costLabel, requestRows } from "../src/thread/metering";
 
 const sessionCost = {
@@ -107,12 +92,10 @@ test.beforeEach(() => {
     currentId: "",
     ready: true,
     status: {
-      version: "test",
       models: [
         { id: "test", name: "测试模型", model: "test", protocol: "responses", context_window: 0 },
       ],
       workdir: "",
-      data_dir: "",
     },
   });
   selectModel("test");
@@ -210,21 +193,23 @@ test("对话区块：运行中过程平铺，完成后收进折叠条，最终�
     ...toolPair("c2", 6),
     usageOf(textItem("assistant", "做完了", 8)),
   ];
-  const shape = (blocks: ReturnType<typeof buildBlocks>) =>
-    blocks.map((block) => (block.kind === "message" ? `${block.row.kind}` : block.kind));
+  const shape = (blocks: ReturnType<typeof buildTurns>) =>
+    blocks.map((block) => (block.kind === "message" ? block.message.role : block.kind));
 
-  // 运行中：思考和工具按顺序平铺，中间正文独立成消息，没有折叠条。
-  const live = buildBlocks(buildRows(messages.slice(0, 7), [], true), true);
-  assert.deepEqual(shape(live), ["day", "user", "flat", "assistant", "flat"]);
+  // 运行中：思考、工具和中间正文按顺序平铺，没有折叠条。
+  const live = buildTurns(projectRows(messages.slice(0, 7), [], [], true), true);
+  assert.deepEqual(shape(live), ["user", "flat"]);
   const flat = live.find((block) => block.kind === "flat");
   assert.deepEqual(flat?.kind === "flat" ? flat.items.map((item) => item.kind) : [], [
     "think",
     "tool",
+    "text",
+    "tool",
   ]);
 
   // 完成后：过程（含中间正文）进同一条折叠条，最终回答在外面，用量挂在最终回答上。
-  const done = buildBlocks(buildRows(messages), false);
-  assert.deepEqual(shape(done), ["day", "user", "turn", "assistant"]);
+  const done = buildTurns(projectRows(messages, [], [], false), false);
+  assert.deepEqual(shape(done), ["user", "turn", "assistant"]);
   const turn = done.find((block) => block.kind === "turn");
   assert.deepEqual(turn?.kind === "turn" ? turn.items.map((item) => item.kind) : [], [
     "think",
@@ -235,44 +220,34 @@ test("对话区块：运行中过程平铺，完成后收进折叠条，最终�
   assert.ok(turn?.kind === "turn" && turn.durationMs === 7_000);
   const final = done.at(-1);
   assert.ok(final?.kind === "message" && final.final === true);
-  assert.equal(final?.kind === "message" ? final.usage?.length : 0, 1);
-  // 用量只挂在最终回答上，不进过程条目。
-  for (const block of done) {
-    if (block.kind === "turn" || block.kind === "flat") {
-      assert.ok(block.items.every((item) => item.row.kind !== "usage"));
-    }
-  }
+  assert.equal(final?.kind === "message" ? final.message.usage?.length : 0, 1);
 });
 
 test("对话区块：最终回答的标识在运行中与完成后保持一致，没有最终回答时过程仍平铺", () => {
   const answer = textItem("assistant", "结果", 5);
   const base: RawMessage[] = [textItem("user", "问", 1), ...toolPair("c1", 2)];
-  const live = buildBlocks(buildRows([...base, answer], [], true), true);
-  const done = buildBlocks(buildRows([...base, answer]), false);
-  const liveKey = live.find(
-    (block) => block.kind === "message" && block.row.kind === "assistant",
-  )?.key;
-  const doneKey = done.find(
-    (block) => block.kind === "message" && block.row.kind === "assistant",
-  )?.key;
+  const liveRows = projectRows([...base, answer], [], [], true);
+  const doneRows = projectRows([...base, answer], [], [], false);
+  const liveKey = liveRows.find((row) => row.role === "assistant" && row.content)?._key;
+  const doneKey = doneRows.find((row) => row.role === "assistant" && row.content)?._key;
   assert.ok(liveKey);
   assert.equal(liveKey, doneKey);
 
   // 中途停止：只有过程没有最终回答，工具仍然显示在对话里，不被折叠隐藏。
-  const stopped = buildBlocks(buildRows(base), false);
+  const stopped = buildTurns(projectRows(base, [], [], false), false);
   assert.deepEqual(
     stopped.map((block) => block.kind),
-    ["day", "message", "flat"],
+    ["message", "flat"],
   );
 
   // 没有过程的一轮不产生折叠条。
-  const plain = buildBlocks(
-    buildRows([textItem("user", "问", 1), textItem("assistant", "答", 2)]),
+  const plain = buildTurns(
+    projectRows([textItem("user", "问", 1), textItem("assistant", "答", 2)], [], [], false),
     false,
   );
   assert.deepEqual(
     plain.map((block) => block.kind),
-    ["day", "message", "message"],
+    ["message", "message"],
   );
 });
 
@@ -447,12 +422,10 @@ test("回复通过 SSE 接管数据库 ID，保持实时 key，不再发起 GET"
     compactions: [],
     notes: [],
     status: {
-      version: "test",
       models: [
         { id: "test", name: "测试模型", model: "test", protocol: "responses", context_window: 0 },
       ],
       workdir: "",
-      data_dir: "",
     },
   });
   selectModel("test");
@@ -529,12 +502,10 @@ test("新会话创建后通知路由，进入该 URL 不重置正在执行的回
     busy: false,
     loadError: "",
     status: {
-      version: "test",
       models: [
         { id: "test", name: "测试模型", model: "test", protocol: "responses", context_window: 0 },
       ],
       workdir: "",
-      data_dir: "",
     },
   });
   selectModel("test");
@@ -674,12 +645,10 @@ test("多轮工具和压缩通过 SSE 保存 ID、usage 和列表，终止时只
     hasMore: false,
     threads: [{ ...session, id: "other", updated_at: 1 }],
     status: {
-      version: "test",
       models: [
         { id: "test", name: "测试模型", model: "test", protocol: "responses", context_window: 0 },
       ],
       workdir: "",
-      data_dir: "",
     },
   });
   selectModel("test");
@@ -758,12 +727,10 @@ test("图片消息限制五张，发送失败可携图重试，保存确认后�
     ready: true,
     busy: false,
     status: {
-      version: "test",
       models: [
         { id: "test", name: "测试模型", model: "test", protocol: "responses", context_window: 0 },
       ],
       workdir: "",
-      data_dir: "",
     },
   });
   selectModel("test");
@@ -883,7 +850,7 @@ test("分支使用回答的真实消息 ID，防止重复点击，成功加入�
   assert.equal(buildRows([row])[0].messageId, 42);
   useThread.setState({
     currentId: "test",
-    busy: false,
+    busy: true,
     branchingMessageId: 0,
     messages: [row],
     threads: [testSession],
@@ -1221,6 +1188,42 @@ test("全局流自动重连，重新读取快照恢复同一任务，模型请�
   assert.match(JSON.stringify(useThread.getState().messages), /已恢复片段/);
 });
 
+test("重连恢复错过的撤回，旧消息和旧用量从当前会话移除", async (t) => {
+  const original = globalThis.fetch;
+  t.after(() => {
+    globalThis.fetch = original;
+  });
+  const session = {
+    ...testSession,
+    id: "recall-during-disconnect",
+    request_count: 4,
+    cost: { ...sessionCost.cost, amount: 1 },
+  };
+  const kept: RawMessage = {
+    id: 7,
+    item: { type: "message", role: "user", content: [{ type: "input_text", text: "保留" }] },
+  };
+  const removed: RawMessage = {
+    id: 8,
+    item: { type: "message", role: "user", content: [{ type: "input_text", text: "撤回" }] },
+  };
+  globalThis.fetch = async () => json(page([kept, removed], session));
+  await openThread(session.id);
+  const updated = { ...session, request_count: 1, cost: { ...sessionCost.cost, amount: 0.25 } };
+  cursor++;
+  globalThis.fetch = async () => json(page([kept], updated));
+  receiveFrame({ epoch: "test", cursor, snapshot: { sessions: [updated] } });
+  assert.equal(useThread.getState().ready, true);
+  assert.equal(useThread.getState().messages.length, 2);
+  await tick();
+  assert.deepEqual(
+    useThread.getState().messages.map((row) => row.id),
+    [kept.id],
+  );
+  assert.equal(useThread.getState().threads[0].request_count, 1);
+  assert.equal(useThread.getState().threads[0].cost.amount, 0.25);
+});
+
 test("HTTP 确认晚于 SSE 完成时不回退状态，发送过程中换页不抢走当前对话", async (t) => {
   const original = globalThis.fetch;
   t.after(() => {
@@ -1511,24 +1514,6 @@ test("模型选择记住最近使用的模型，旧对话以自己最近发送�
   assert.equal(selectedModel()?.id, "a");
 });
 
-test("置顶顺序运算：拖入、组内排序、拖出，插入下标不含被拖会话", () => {
-  const pinned = ["a", "b", "c"];
-  assert.deepEqual(nextPinnedIds(pinned, "d", { kind: "pinned", index: 1 }), ["a", "d", "b", "c"]);
-  assert.deepEqual(nextPinnedIds(pinned, "a", { kind: "pinned", index: 2 }), ["b", "c", "a"]);
-  assert.deepEqual(nextPinnedIds(pinned, "c", { kind: "pinned", index: 0 }), ["c", "a", "b"]);
-  assert.deepEqual(nextPinnedIds(pinned, "b", { kind: "recent" }), ["a", "c"]);
-  assert.deepEqual(nextPinnedIds([], "x", { kind: "pinned", index: 0 }), ["x"]);
-  assert.deepEqual(nextPinnedIds(["a"], "x", { kind: "pinned", index: 99 }), ["a", "x"]);
-  assert.deepEqual(nextPinnedIds(["a"], "x", { kind: "pinned", index: -3 }), ["x", "a"]);
-  // 拖回原位、把未置顶的拖到其余区域，结果不变，调用方据此跳过请求。
-  assert.equal(
-    samePinnedIds(nextPinnedIds(pinned, "b", { kind: "pinned", index: 1 }), pinned),
-    true,
-  );
-  assert.equal(samePinnedIds(nextPinnedIds(pinned, "z", { kind: "recent" }), pinned), true);
-  assert.equal(samePinnedIds(["a", "b"], ["b", "a"]), false);
-});
-
 test("列表排序置顶在前且按序号升序，其余按最近活动，序号 0 也算置顶", () => {
   const thread = (id: string, pinned: number | null, updated_at: number) => ({
     ...testSession,
@@ -1646,40 +1631,6 @@ test("拖拽排序先乐观更新，以服务端确认为准；失败时回滚�
   ]);
 });
 
-test("应用面板：按地址判断当前应用，未知页面不属于任何应用，切回应用时回到上次停留的页面", () => {
-  assert.equal(matchApp("/")?.id, "chat");
-  assert.equal(matchApp("/sessions/abc")?.id, "chat");
-  assert.equal(matchApp("/logs")?.id, "logs");
-  assert.equal(matchApp("/logs/session/abc")?.id, "logs");
-  assert.equal(matchApp("/logs/overview")?.id, "logs");
-  assert.equal(matchApp("/notes")?.id, "notes");
-  assert.equal(matchApp("/notes/abc")?.id, "notes");
-  assert.equal(matchApp("/settings")?.id, "settings");
-  // 前缀必须按路径段匹配，不能把 /logsx 当成日志。
-  assert.equal(matchApp("/logsx"), null);
-  assert.equal(matchApp("/notesx"), null);
-  assert.equal(matchApp("/nope"), null);
-  assert.equal(appForPath("/nope").id, "chat");
-  assert.deepEqual(
-    apps.map((app) => app.id),
-    ["chat", "companion", "notes", "logs", "settings"],
-  );
-
-  const chat = apps[0];
-  const logs = apps[3];
-  assert.equal(launchPath(chat), "/");
-  rememberLocation("/sessions/abc");
-  rememberLocation("/logs/session/xyz?x=1");
-  rememberLocation("/notes/abc");
-  rememberLocation("/nope");
-  assert.equal(launchPath(chat), "/sessions/abc");
-  assert.equal(launchPath(logs), "/logs/session/xyz?x=1");
-  assert.equal(launchPath(apps[2]), "/notes/abc");
-  assert.equal(matchApp("/characters/abc/moments")?.id, "companion");
-  // 404 页不会覆盖任何应用的记忆。
-  assert.equal(launchPath(apps[4]), "/settings");
-});
-
 test("回答的用量明细：每次请求标注当次所用模型，对话中途换模型也各自显示，缺少计量时不猜模型", () => {
   const priced = (model: string, amount: number) => ({
     protocol: "responses",
@@ -1713,195 +1664,4 @@ test("回答的用量明细：每次请求标注当次所用模型，对话中�
   );
   assert.ok(rows[0].tokens.includes("输入 10"));
   assert.ok(rows[1].tokens.includes("输入 20"));
-});
-
-test("记事本：标题为空时显示未命名，预览压平空白，时间只显示今天或日期", () => {
-  assert.equal(noteTitle({ title: "   " }), "未命名笔记");
-  assert.equal(noteTitle({ title: " 备忘 " }), "备忘");
-  assert.equal(notePreview(" 第一行\n\n第二行  "), "第一行 第二行");
-  assert.equal(notePreview("abcdefghij", 4), "abcd");
-  const now = new Date(2026, 10, 14, 15, 30).getTime();
-  assert.equal(noteTime(new Date(2026, 10, 14, 9, 5).getTime(), now), "09:05");
-  assert.equal(noteTime(new Date(2026, 10, 2, 9, 5).getTime(), now), "11月2日");
-});
-
-test("日志金额与 token 展示：未计费不显示成 $0，字段按固定顺序和中文名，未知字段保留原名", () => {
-  assert.equal(usd(0), "$0");
-  assert.equal(usd(1.123456), "$1.1235");
-  assert.equal(usd(0.000008), "$0.000008");
-  const cost = (amount: number, unpriced: number) => ({
-    amount,
-    currency: "USD",
-    unpriced_requests: unpriced,
-  });
-  assert.equal(costText(cost(0, 3), 3), "未计费");
-  assert.equal(costText(cost(0.5, 0), 3), "$0.5000");
-  assert.equal(costText(cost(0.5, 1), 3), "$0.5000 +1 次未计费");
-  assert.equal(costText(cost(0, 0), 0), "$0");
-  assert.deepEqual(
-    tokenChips({
-      cache_creation_input_tokens: 5,
-      output_tokens: 20,
-      input_tokens: 1000,
-      cache_read_input_tokens: 7,
-      weird_tokens: 9,
-      zero_tokens: 0,
-    }),
-    ["输入 1,000", "输出 20", "缓存读取 7", "缓存写入 5", "weird_tokens 9"],
-  );
-  assert.deepEqual(tokenChips({}), []);
-  // Claude 与 Chat 的字段口径不同，汇总到一起时标签必须不同名，不能出现两个「输入」。
-  assert.deepEqual(
-    tokenChips({ input_tokens: 3, prompt_tokens: 100, output_tokens: 2, completion_tokens: 9 }),
-    ["输入 3", "输出 2", "输入(prompt) 100", "输出(completion) 9"],
-  );
-  const part = { amount: 0.5, currency: "USD", unpriced_requests: 2 };
-  assert.deepEqual(costParts(part, 5), { value: "$0.5000", note: "另有 2 次请求未计费" });
-  assert.deepEqual(costParts({ ...part, unpriced_requests: 5 }, 5), { value: "未计费", note: "" });
-  assert.equal(costShort(part, 5), "$0.5000");
-  // 与服务端口径一致：只取顶层 *_tokens 的非负整数。
-  assert.deepEqual(
-    tokensOf({
-      input_tokens: 10,
-      output_tokens: 2.5,
-      total_tokens: -1,
-      note: "x",
-      input_tokens_details: { cached_tokens: 3 },
-    }),
-    { input_tokens: 10 },
-  );
-  assert.deepEqual(tokensOf(null), {});
-});
-
-test("日志时间范围与列表时间", () => {
-  const now = new Date(2026, 10, 14, 15, 30, 0).getTime();
-  assert.equal(rangeSince("all", now), 0);
-  assert.equal(new Date(rangeSince("today", now)).getHours(), 0);
-  assert.equal(new Date(rangeSince("today", now)).getDate(), 14);
-  assert.equal(rangeSince("7d", now), now - 7 * 86_400_000);
-  assert.equal(rangeSince("30d", now), now - 30 * 86_400_000);
-  assert.equal(listTime(new Date(2026, 10, 14, 9, 5, 0).getTime(), now), "09:05");
-  assert.equal(listTime(new Date(2026, 10, 3, 9, 5, 0).getTime(), now), "11月3日");
-});
-
-test("日志记录解析：用户/助手/思考/工具调用/工具结果/摘要各有类型，工具结果区分成功与失败", () => {
-  const user = describeMessage({
-    id: 1,
-    item: {
-      type: "message",
-      role: "user",
-      content: [
-        { type: "input_text", text: "你好" },
-        { type: "input_image", image_url: "/api/images/a.png" },
-      ],
-    },
-    meta: { attachments: [{ name: "a.txt", type: "text/plain", size: 1, url: "", path: "" }] },
-  });
-  assert.deepEqual(
-    [user.label, user.tone, user.text, user.images, user.files],
-    ["用户", "user", "你好", 1, ["a.txt"]],
-  );
-  const assistant = describeMessage({
-    id: 2,
-    item: { type: "message", role: "assistant", content: [{ type: "output_text", text: "回答" }] },
-  });
-  assert.deepEqual(
-    [assistant.label, assistant.tone, assistant.text],
-    ["助手", "assistant", "回答"],
-  );
-  const think = describeMessage({
-    id: 3,
-    item: { type: "reasoning", summary: [{ type: "summary_text", text: "想一想" }] },
-  });
-  assert.deepEqual([think.label, think.tone, think.text], ["思考", "think", "想一想"]);
-  const call = describeMessage({
-    id: 4,
-    item: { type: "function_call", call_id: "c1", name: "shell", arguments: '{"command":"ls"}' },
-  });
-  assert.equal(call.label, "工具调用");
-  assert.equal(call.title, "shell");
-  assert.equal(call.text, JSON.stringify({ command: "ls" }, null, 2));
-  assert.equal(call.mono, true);
-  const brokenCall = describeMessage({
-    id: 5,
-    item: { type: "function_call", call_id: "c2", name: "read", arguments: "{坏的" },
-  });
-  assert.equal(brokenCall.text, "{坏的");
-  const success = describeMessage({
-    id: 6,
-    item: {
-      type: "function_call_output",
-      call_id: "c1",
-      output: JSON.stringify({ success: true, text: "a.txt" }),
-    },
-  });
-  assert.deepEqual(
-    [success.label, success.tone, success.text, success.ok],
-    ["工具结果", "result", "a.txt", true],
-  );
-  const failure = describeMessage({
-    id: 7,
-    item: {
-      type: "function_call_output",
-      call_id: "c1",
-      output: JSON.stringify({ success: false, text: "没有权限" }),
-    },
-  });
-  assert.deepEqual([failure.text, failure.ok], ["没有权限", false]);
-  const withImage = describeMessage({
-    id: 8,
-    item: {
-      type: "function_call_output",
-      call_id: "c3",
-      output: [
-        { type: "input_text", text: JSON.stringify({ success: true, text: "截图" }) },
-        { type: "input_image", image_url: "/api/images/b.png" },
-      ],
-    },
-  });
-  assert.deepEqual([withImage.text, withImage.images, withImage.ok], ["截图", 1, true]);
-  const plain = describeMessage({
-    id: 9,
-    item: { type: "function_call_output", call_id: "c4", output: "不是约定格式" },
-  });
-  assert.deepEqual([plain.text, plain.ok], ["不是约定格式", null]);
-  const summary = describeCompaction({ id: 1, through_id: 42, summary: "摘要内容", created_at: 1 });
-  assert.deepEqual(
-    [summary.label, summary.tone, summary.title, summary.text],
-    ["摘要", "summary", "已压缩到第 42 条", "摘要内容"],
-  );
-});
-
-test("日志对象标题：对话没有标题时用首条消息预览，任务用任务文本", () => {
-  const base = {
-    session_id: null,
-    session_title: null,
-    model: null,
-    status: null,
-    cost: { amount: 0, currency: "USD", unpriced_requests: 0 },
-    request_count: 0,
-    message_count: 0,
-    created_at: 1,
-    updated_at: 1,
-  };
-  assert.equal(
-    ownerTitle({ ...base, kind: "session", id: "a", title: "标题", preview: "预览" }),
-    "标题",
-  );
-  assert.equal(
-    ownerTitle({ ...base, kind: "session", id: "a", title: "", preview: "预览" }),
-    "预览",
-  );
-  assert.equal(
-    ownerTitle({ ...base, kind: "session", id: "a", title: "", preview: "" }),
-    "未命名对话",
-  );
-  assert.equal(
-    ownerTitle({ ...base, kind: "task", id: "t", title: "跑测试", preview: "" }),
-    "跑测试",
-  );
-  assert.equal(
-    ownerTitle({ ...base, kind: "task", id: "t", title: "", preview: "" }),
-    "未命名任务",
-  );
 });

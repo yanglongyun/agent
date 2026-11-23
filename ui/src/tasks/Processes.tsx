@@ -1,21 +1,11 @@
 import { useEffect, useState } from "react";
 import { labels, active, statusTone } from "./status";
-import { Sheet } from "../overlay/Sheet";
-import { api } from "../lib/api";
+import { Dialog } from "@/overlay/Dialog";
+import { api } from "@/lib/api";
+import { useT } from "@/i18n";
+import type { ShellJob } from "./activity";
 
-export interface ShellJob {
-  id: string;
-  task_id: string | null;
-  command: string;
-  workdir: string;
-  status: string;
-  output?: string;
-  truncated: number;
-  stdin_closed: number;
-  exit_code: number | null;
-  error: string | null;
-  created_at: number;
-}
+export type { ShellJob };
 
 export function ProcessDetail({
   processId,
@@ -26,6 +16,7 @@ export function ProcessDetail({
   onClose: () => void;
   onChanged: (record: ShellJob) => void;
 }) {
+  const t = useT();
   const [record, setRecord] = useState<ShellJob | null>(null);
   const [input, setInput] = useState("");
   const [pending, setPending] = useState(false);
@@ -47,7 +38,7 @@ export function ProcessDetail({
         }
       } catch (failure) {
         if (current) {
-          setReadError(failure instanceof Error ? failure.message : "命令读取失败");
+          setReadError(failure instanceof Error ? failure.message : t("processes.loadFailed"));
           timer = setTimeout(() => void load(), 3000);
         }
       }
@@ -76,31 +67,15 @@ export function ProcessDetail({
         setInput("");
       }
     } catch (failure) {
-      setError(failure instanceof Error ? failure.message : "操作失败");
+      setError(failure instanceof Error ? failure.message : t("processes.actionFailed"));
     } finally {
       setPending(false);
     }
   }
   return (
-    <Sheet
-      title="后台命令"
-      className="xwide"
-      onClose={onClose}
-      footer={
-        running ? (
-          <button
-            type="button"
-            className="btn btn-danger-quiet"
-            disabled={pending || record.status === "cancelling"}
-            onClick={() => void act("cancel")}
-          >
-            停止命令
-          </button>
-        ) : undefined
-      }
-    >
-      {(readError || error) && <p className="sheet-error">{readError || error}</p>}
-      {!record && !readError && <p className="note">正在读取…</p>}
+    <Dialog title={t("processes.detail")} className="modal-xwide" close={onClose}>
+      {(readError || error) && <p className="modal-error">{readError || error}</p>}
+      {!record && !readError && <p className="note">{t("common.reading")}</p>}
       {record && (
         <>
           <div className="task-brief">
@@ -108,16 +83,18 @@ export function ProcessDetail({
             <div className="pill-row">
               <span className={`badge ${statusTone(record.status)}`}>{labels[record.status]}</span>
               <span className="pill mono">{record.workdir}</span>
-              {record.exit_code !== null && <span className="pill">退出码 {record.exit_code}</span>}
+              {record.exit_code !== null && (
+                <span className="pill">{t("processes.exitCode", { code: record.exit_code })}</span>
+              )}
             </div>
           </div>
-          {record.error && <p className="sheet-error">{record.error}</p>}
+          {record.error && <p className="modal-error">{record.error}</p>}
           <div className="process-label">
-            <span>输出</span>
-            {record.truncated > 0 && <small>输出过长，只显示末尾</small>}
+            <span>{t("processes.output")}</span>
+            {record.truncated > 0 && <small>{t("processes.truncated")}</small>}
           </div>
-          <pre className="well process-output" aria-label="命令输出">
-            {record.output || "暂无输出"}
+          <pre className="well process-output" aria-label={t("processes.output")}>
+            {record.output || t("processes.empty")}
           </pre>
           {running && !record.stdin_closed && (
             <form
@@ -128,34 +105,46 @@ export function ProcessDetail({
               }}
             >
               <label className="field" htmlFor="process-input">
-                发送输入
+                {t("processes.sendInput")}
               </label>
               <textarea
                 id="process-input"
-                className="field-input mono"
+                className="input mono"
                 value={input}
                 onChange={(event) => setInput(event.target.value)}
-                placeholder="输入内容，发送时追加换行"
+                placeholder={t("processes.inputPlaceholder")}
                 rows={2}
                 disabled={pending}
               />
               <div>
                 <button
                   type="button"
-                  className="btn btn-ghost sm"
+                  className="btn btn-plain"
                   disabled={pending}
                   onClick={() => void act("close")}
                 >
-                  结束输入
+                  {t("processes.endInput")}
                 </button>
-                <button type="submit" className="btn btn-quiet sm" disabled={pending}>
-                  发送
+                <button type="submit" className="btn btn-primary" disabled={pending}>
+                  {t("processes.send")}
                 </button>
               </div>
             </form>
           )}
+          {running && (
+            <div className="modal-foot">
+              <button
+                type="button"
+                className="btn btn-danger"
+                disabled={pending || record.status === "cancelling"}
+                onClick={() => void act("cancel")}
+              >
+                {t("processes.stop")}
+              </button>
+            </div>
+          )}
         </>
       )}
-    </Sheet>
+    </Dialog>
   );
 }

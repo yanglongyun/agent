@@ -16,16 +16,10 @@ export default async function put(req, res, context) {
       "workdir",
       "timeout",
       "max_output",
-      "image",
-      "api",
     ],
     512 * 1024,
   );
-  const next = {
-    ...context.config,
-    image: { ...context.config.image },
-    api: { ...context.config.api },
-  };
+  const next = { ...context.config };
 
   for (const [key, value] of Object.entries(patch)) {
     switch (key) {
@@ -70,37 +64,6 @@ export default async function put(req, res, context) {
         next[key] = value;
         break;
       }
-      case "image": {
-        if (!value || typeof value !== "object" || Array.isArray(value)) {
-          fail(400, "image 必须是对象");
-        }
-        for (const [field, text] of Object.entries(value)) {
-          if (!["url", "key", "model"].includes(field) || typeof text !== "string") {
-            fail(400, "image 只接受字符串 url、key、model");
-          }
-          // 密钥留空表示沿用已保存的值，界面不回显密钥。
-          if (field === "key" && !text.trim()) {
-            continue;
-          }
-          next.image[field] = text.trim();
-        }
-        break;
-      }
-      case "api": {
-        if (!value || typeof value !== "object" || Array.isArray(value)) {
-          fail(400, "api 必须是对象");
-        }
-        for (const field of Object.keys(value)) {
-          if (field !== "listen") {
-            fail(400, "api 只接受 listen");
-          }
-        }
-        if (value.listen === undefined) {
-          break;
-        }
-        next.api.listen = value.listen;
-        break;
-      }
     }
   }
 
@@ -110,8 +73,7 @@ export default async function put(req, res, context) {
     fail(400, error.message);
   }
 
-  const restartRequired = next.api.listen !== context.config.api.listen;
   saveConfig(context.paths, next);
   context.config = next;
-  return json(res, 200, { restart_required: restartRequired });
+  return json(res, 200, { ok: true });
 }

@@ -1,10 +1,11 @@
+import message from "./[message_id]/index.js";
 import get from "./get.js";
 import post from "./post.js";
 import { fail } from "../../../http.js";
 
 export default async function messages(req, res, parts, context, id) {
   if (parts.length > 0) {
-    fail(404, "接口不存在");
+    return message(req, res, parts.slice(1), context, id, parts[0]);
   }
   switch (req.method) {
     case "GET":

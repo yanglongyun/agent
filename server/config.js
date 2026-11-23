@@ -45,7 +45,6 @@ export function validateConfig(config) {
     "workdir",
     "timeout",
     "max_output",
-    "image",
     "api",
   ];
   for (const key of Object.keys(config)) {
@@ -113,34 +112,6 @@ export function validateConfig(config) {
     (!path.isAbsolute(config.workdir) || !fs.statSync(config.workdir).isDirectory())
   ) {
     throw new Error("工作目录必须是已存在的绝对目录");
-  }
-  // 生图连接独立于对话模型：url 为 OpenAI 兼容接口的 /v1 前缀，留空表示不生成图片。
-  if (!config.image || typeof config.image !== "object" || Array.isArray(config.image)) {
-    throw new Error("image 必须是对象");
-  }
-  for (const key of Object.keys(config.image)) {
-    if (!["url", "key", "model"].includes(key)) {
-      throw new Error(`未知 image 字段：${key}`);
-    }
-  }
-  for (const key of ["url", "key", "model"]) {
-    if (typeof config.image[key] !== "string") {
-      throw new Error(`image.${key} 必须是字符串`);
-    }
-  }
-  if (config.image.url) {
-    let address;
-    try {
-      address = new URL(config.image.url);
-    } catch {
-      throw new Error("生图接口地址无效");
-    }
-    if (!["http:", "https:"].includes(address.protocol)) {
-      throw new Error("生图接口地址必须使用 HTTP 或 HTTPS");
-    }
-    if (!config.image.model.trim()) {
-      throw new Error("生图模型不能为空");
-    }
   }
   if (!config.api || typeof config.api !== "object" || Array.isArray(config.api)) {
     throw new Error("api 必须是对象");

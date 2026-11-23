@@ -22,31 +22,19 @@ test("页面路由返回同一份界面入口，其余路径保持各自的错�
   });
   const status = async (route) => (await fetch(origin + route)).status;
 
-  for (const route of [
-    "/",
-    "/login",
-    "/settings",
-    "/sessions/abc",
-    "/logs",
-    "/logs/overview",
-    "/logs/session/abc",
-    "/logs/task/abc",
-    "/notes",
-    "/notes/abc",
-  ]) {
+  for (const route of ["/", "/conversation", "/settings"]) {
     const response = await fetch(origin + route);
     assert.equal(response.status, 200, route);
     assert.match(response.headers.get("content-type"), /^text\/html/, route);
   }
   for (const route of [
     "/settings/extra",
+    "/login",
     "/sessions",
-    "/logs/session",
-    "/logs/other/abc",
-    "/logs/overview/abc",
-    "/logs/session/abc/extra",
-    "/notes/abc/extra",
-    "/log",
+    "/sessions/abc",
+    "/logs",
+    "/notes",
+    "/conversation/extra",
   ]) {
     assert.equal(await status(route), 404, route);
   }

@@ -9,6 +9,9 @@ export default async function post(req, res, context) {
   ) {
     fail(404, "会话不存在");
   }
+  if (context.recalling.has(args.session_id)) {
+    fail(409, "正在撤回消息");
+  }
   try {
     const selected = runConfig(context.config, args.model_id, args.compact_model_id);
     const scope = {

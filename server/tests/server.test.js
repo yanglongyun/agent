@@ -308,47 +308,15 @@ test("业务表与计量表字段、路由、鉴权、分页和删除", async (t
     "usage",
     "created_at",
   ]);
-  assert.deepEqual(columns("notes"), ["id", "title", "body", "created_at", "updated_at"]);
   const tables = f.runtime.db
-    .prepare("SELECT name,sql FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")
+    .prepare(
+      "SELECT name,sql FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name",
+    )
     .all();
-  assert.equal(tables.length, 11);
-  assert.deepEqual(columns("characters"), [
-    "id",
-    "name",
-    "tagline",
-    "persona",
-    "appearance",
-    "memory",
-    "avatar",
-    "cover",
-    "model_id",
-    "posting",
-    "created_at",
-    "updated_at",
-    "next_post_at",
-  ]);
-  assert.deepEqual(columns("character_messages"), [
-    "id",
-    "character_id",
-    "role",
-    "body",
-    "image",
-    "post_id",
-    "created_at",
-  ]);
-  assert.deepEqual(columns("posts"), [
-    "id",
-    "character_id",
-    "body",
-    "images",
-    "photo_prompt",
-    "mood",
-    "location",
-    "liked",
-    "created_at",
-  ]);
-  assert.deepEqual(columns("post_comments"), ["id", "post_id", "author", "body", "created_at"]);
+  assert.deepEqual(
+    tables.map((table) => table.name),
+    ["compactions", "messages", "metering", "sessions", "shell_jobs", "tasks"],
+  );
   assert.deepEqual(columns("metering"), [
     "id",
     "session_id",
@@ -362,7 +330,16 @@ test("业务表与计量表字段、路由、鉴权、分页和删除", async (t
     assert.doesNotMatch(row.sql, /FOREIGN|CHECK/i);
   }
   assert.equal((await fetch(f.origin + "/api/sessions")).status, 401);
-  for (const route of ["/v1/sessions", "/auth/me", "/api/unknown", "/api/sessions/a/b/c"]) {
+  for (const route of [
+    "/v1/sessions",
+    "/auth/me",
+    "/api/unknown",
+    "/api/sessions/a/b/c",
+    "/api/notes",
+    "/api/characters",
+    "/api/posts",
+    "/api/logs/summary",
+  ]) {
     assert.equal((await f.request(route)).status, 404);
   }
   assert.equal((await f.request("/api/sessions", "POST", { unexpected: true })).status, 400);
@@ -400,7 +377,8 @@ test("业务表与计量表字段、路由、鉴权、分页和删除", async (t
   assert.equal((await (await f.request(base)).json()).title, "改名");
   const c = await (await f.request("/api/config")).json();
   assert.ok(c.models.every((model) => model.key === undefined));
-  assert.equal(c.api.token, undefined);
+  assert.equal(c.api, undefined);
+  assert.equal(c.image, undefined);
   assert.equal((await f.request("/api/config", "PUT", { api: { token: "bad" } })).status, 400);
   assert.equal((await f.request("/api/config", "PUT", { keep: 0 })).status, 400);
   assert.equal((await f.request("/api/config", "PUT", { run_timeout: 30 })).status, 400);
@@ -948,7 +926,7 @@ test("标题先去空白再校验；设置保存返回结果并通过 GET 读取
       compact_at: 90,
     })
   ).json();
-  assert.deepEqual(saved, { restart_required: false });
+  assert.deepEqual(saved, { ok: true });
   const config = await (await f.request("/api/config")).json();
   assert.equal(config.models[0].context_window, 100);
   assert.equal(config.compact_at, 90);
@@ -958,12 +936,7 @@ test("页面深链接和刷新返回 UI，未知资源与 API 不返回 HTML", a
   const f = await fixture(t, async () => answer("ok"));
   const root = await fetch(f.origin + "/");
   const html = await root.text();
-  for (const route of [
-    "/login",
-    "/settings",
-    "/sessions/example",
-    "/sessions/example?view=history",
-  ]) {
+  for (const route of ["/conversation", "/settings"]) {
     const response = await fetch(f.origin + route);
     assert.equal(response.status, 200, route);
     assert.match(response.headers.get("content-type"), /text\/html/);
@@ -976,7 +949,8 @@ test("页面深链接和刷新返回 UI，未知资源与 API 不返回 HTML", a
     "/assets/missing.js",
     "/tasks/example",
     "/missing",
-    "/sessions/example/extra",
+    "/login",
+    "/sessions/example",
     "/sessions/%2e%2e%2fconfig.json",
     "/api/unknown",
   ]) {

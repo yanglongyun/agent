@@ -1,156 +1,46 @@
-import {
-  Paperclip,
-  SquarePen,
-  PanelLeft,
-  ArrowUp,
-  Square,
-  ChevronRight,
-  Terminal,
-  FileText,
-  Pencil,
-  Sparkles,
-  NotebookPen,
-  Trash2,
-  Copy,
-  GitBranch,
-  Settings2,
-  Search,
-  Ellipsis,
-  X,
-  ArrowDown,
-  Folder,
-  Sun,
-  Moon,
-  Monitor,
-  Check,
-  CircleAlert,
-  LogOut,
-  CircleHelp,
-  Plus,
-  LoaderCircle,
-  ArrowRight,
-  ChevronDown,
-  MessagesSquare,
-  Code2,
-  Lightbulb,
-  SlidersHorizontal,
-  Cpu,
-  Layers,
-  Link,
-  ExternalLink,
-  Download,
-  Pin,
-  PinOff,
-  LayoutGrid,
-  ScrollText,
-  ArrowLeft,
-  Menu,
-  ChartNoAxesColumn,
-  KeyRound,
-  Info,
-  Server,
-  Palette,
-  Eye,
-  EyeOff,
-  Minimize2,
-  Bot,
-  PanelLeftClose,
-  ImageIcon,
-  Heart,
-  Camera,
-  MapPin,
-  MessageCircle,
-  WandSparkles,
-  RefreshCw,
-  UserRound,
-  Aperture,
-} from "lucide-react";
+import type { CSSProperties } from "react";
+import { ICONS } from "./assets";
 
-// 全部界面使用 Lucide 同一套描边图标，按需打包。
-const glyphs = {
-  attachment: Paperclip,
-  compose: SquarePen,
-  panel: PanelLeft,
-  send: ArrowUp,
-  stop: Square,
-  chev: ChevronRight,
-  terminal: Terminal,
-  doc: FileText,
-  pen: Pencil,
-  spark: Sparkles,
-  trash: Trash2,
-  copy: Copy,
-  branch: GitBranch,
-  settings: Settings2,
-  search: Search,
-  more: Ellipsis,
-  close: X,
-  down: ArrowDown,
-  folder: Folder,
-  sun: Sun,
-  moon: Moon,
-  monitor: Monitor,
-  check: Check,
-  alert: CircleAlert,
-  logout: LogOut,
-  help: CircleHelp,
-  plus: Plus,
-  loading: LoaderCircle,
-  arrow: ArrowRight,
-  chevronDown: ChevronDown,
-  messages: MessagesSquare,
-  notes: NotebookPen,
-  code: Code2,
-  idea: Lightbulb,
-  sliders: SlidersHorizontal,
-  cpu: Cpu,
-  layers: Layers,
-  link: Link,
-  external: ExternalLink,
-  download: Download,
-  pin: Pin,
-  pinOff: PinOff,
-  grid: LayoutGrid,
-  logs: ScrollText,
-  back: ArrowLeft,
-  menu: Menu,
-  chart: ChartNoAxesColumn,
-  key: KeyRound,
-  info: Info,
-  server: Server,
-  palette: Palette,
-  eye: Eye,
-  eyeOff: EyeOff,
-  shrink: Minimize2,
-  bot: Bot,
-  panelClose: PanelLeftClose,
-  image: ImageIcon,
-  heart: Heart,
-  camera: Camera,
-  pin2: MapPin,
-  comment: MessageCircle,
-  wand: WandSparkles,
-  refresh: RefreshCw,
-  user: UserRound,
-  moments: Aperture,
-};
-export type IconName = keyof typeof glyphs;
 export function Icon({
   name,
   size = 18,
+  style,
   className,
 }: {
-  name: IconName;
+  name: string;
   size?: number;
+  style?: CSSProperties;
   className?: string;
 }) {
-  const Glyph = glyphs[name];
-  return <Glyph size={size} strokeWidth={1.75} className={className} aria-hidden="true" />;
-}
-export function Mark({ size = 30 }: { size?: number }) {
+  const icon = ICONS[name];
+  if (!icon) {
+    throw new Error(`Unknown icon: ${name}`);
+  }
+  const [x, y, w, h] = icon.vb.split(/\s+/).map(Number);
+  const paths = icon.ds.map((path, index) => (
+    <path
+      key={index}
+      d={path.d}
+      fill={path.fill || "currentColor"}
+      fillRule="evenodd"
+      clipRule="evenodd"
+    />
+  ));
   return (
-    <span className="brand-mark" style={{ width: size, height: size }} aria-hidden="true">
-      <Terminal size={Math.round(size * 0.56)} strokeWidth={2.4} />
-    </span>
+    <svg
+      width={size}
+      height={size}
+      viewBox={icon.vb}
+      fill="none"
+      style={style}
+      className={className}
+      aria-hidden="true"
+    >
+      {icon.rot ? (
+        <g transform={`rotate(${icon.rot} ${x + w / 2} ${y + h / 2})`}>{paths}</g>
+      ) : (
+        paths
+      )}
+    </svg>
   );
 }

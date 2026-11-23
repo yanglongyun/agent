@@ -55,60 +55,6 @@ CREATE TABLE IF NOT EXISTS shell_jobs (
 );
 CREATE INDEX IF NOT EXISTS idx_shell_jobs_session ON shell_jobs(session_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_shell_jobs_task ON shell_jobs(task_id);
-CREATE TABLE IF NOT EXISTS notes (
-  id TEXT PRIMARY KEY,
-  title TEXT,
-  body TEXT,
-  created_at INTEGER,
-  updated_at INTEGER
-);
-CREATE INDEX IF NOT EXISTS idx_notes_updated ON notes(updated_at);
-CREATE TABLE IF NOT EXISTS characters (
-  id TEXT PRIMARY KEY,
-  name TEXT,
-  tagline TEXT,
-  persona TEXT,
-  appearance TEXT,
-  memory TEXT,
-  avatar TEXT,
-  cover TEXT,
-  model_id TEXT,
-  posting INTEGER NOT NULL DEFAULT 1,
-  created_at INTEGER,
-  updated_at INTEGER,
-  next_post_at INTEGER
-);
-CREATE TABLE IF NOT EXISTS character_messages (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  character_id TEXT,
-  role TEXT,
-  body TEXT,
-  image TEXT,
-  post_id TEXT,
-  created_at INTEGER
-);
-CREATE INDEX IF NOT EXISTS idx_character_messages ON character_messages(character_id, id);
-CREATE TABLE IF NOT EXISTS posts (
-  id TEXT PRIMARY KEY,
-  character_id TEXT,
-  body TEXT,
-  images TEXT,
-  photo_prompt TEXT,
-  mood TEXT,
-  location TEXT,
-  liked INTEGER NOT NULL DEFAULT 0,
-  created_at INTEGER
-);
-CREATE INDEX IF NOT EXISTS idx_posts_character ON posts(character_id, created_at);
-CREATE INDEX IF NOT EXISTS idx_posts_created ON posts(created_at);
-CREATE TABLE IF NOT EXISTS post_comments (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  post_id TEXT,
-  author TEXT,
-  body TEXT,
-  created_at INTEGER
-);
-CREATE INDEX IF NOT EXISTS idx_post_comments ON post_comments(post_id, id);
 CREATE TABLE IF NOT EXISTS messages (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   session_id TEXT,

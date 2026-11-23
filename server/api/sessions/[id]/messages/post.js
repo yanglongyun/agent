@@ -123,6 +123,9 @@ export default async function post(req, res, context, id) {
   if (!session) {
     fail(404, "会话不存在");
   }
+  if (context.recalling.has(id)) {
+    fail(409, "正在撤回消息");
+  }
   if (active.get(id)?.running) {
     fail(409, "会话正在回复");
   }

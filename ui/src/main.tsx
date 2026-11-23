@@ -1,23 +1,19 @@
 import { StrictMode } from "react";
-import { BrowserRouter } from "react-router";
 import { createRoot } from "react-dom/client";
-
+import { BrowserRouter } from "@/lib/router";
+import App from "./App";
+import { applyTheme, useTheme } from "@/app/theme";
 import "./styles/tokens.css";
 import "./styles/base.css";
-import "./shell/shell.css";
-import "./thread/thread.css";
-import "./tasks/tasks.css";
-import "./logs/logs.css";
-import "./notes/notes.css";
-import "./companion/companion.css";
+import "./styles/auth.css";
+import "./styles/agent.css";
+import "./app/shell.css";
+import "./app/sidebar/sidebar.css";
+import "./chat/chat.css";
 import "./settings/settings.css";
-import "./styles/app.css";
-import "./styles/touch.css";
+import "./tasks/tasks.css";
 
-import { App } from "./App";
-import { initTheme } from "./lib/theme";
-
-initTheme();
+applyTheme(useTheme.getState().theme);
 
 createRoot(document.getElementById("app")!).render(
   <StrictMode>

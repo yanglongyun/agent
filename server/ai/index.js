@@ -252,9 +252,18 @@ export async function callModel(
           result = normalizeChat(result, { source: config.url, model });
         }
       }
+      const metering = measure(result.usage, {
+        protocol,
+        model,
+        url: config.url,
+        serviceTier: result.service_tier,
+        at: Date.now(),
+      });
       if (result.error || result.status !== "completed" || !Array.isArray(result.output)) {
         const error = new Error(result.error?.message || "API 返回的 output 无效或未完整生成");
         error.code = result.error?.code || "invalid_response";
+        error.usage = result.usage ?? null;
+        error.metering = metering;
         if (result.status === "incomplete") {
           error.code = "model_incomplete";
           error.stopReason = result.incomplete_details?.reason || "model_incomplete";
@@ -263,13 +272,7 @@ export async function callModel(
       }
       return {
         ...result,
-        metering: measure(result.usage, {
-          protocol,
-          model,
-          url: config.url,
-          serviceTier: result.service_tier,
-          at: Date.now(),
-        }),
+        metering,
       };
     } catch (error) {
       signal?.throwIfAborted();

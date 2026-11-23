@@ -108,11 +108,18 @@ export function buildClaudePayload({
   let returning = null;
   const payload = {
     model,
-    max_tokens: 64000,
+    max_tokens: config.claude_max_tokens ?? 64000,
     stream,
     messages: output,
-    cache_control: { type: "ephemeral" },
   };
+  if (config.claude_cache !== false) {
+    payload.cache_control = config.claude_cache_ttl
+      ? { type: "ephemeral", ttl: config.claude_cache_ttl }
+      : { type: "ephemeral" };
+  }
+  if (config.claude_effort) {
+    payload.output_config = { effort: config.claude_effort };
+  }
   if (instructions) {
     payload.system = String(instructions);
   }

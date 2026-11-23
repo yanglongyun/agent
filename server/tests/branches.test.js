@@ -1,5 +1,5 @@
 import { configured } from "./config-fixture.js";
-import { runReply } from "./events.js";
+import { connectEvents, runReply } from "./events.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
@@ -254,4 +254,89 @@ test("拒绝其他会话、用户消息和未完成工具边界；失败不残�
   assert.equal((await f.branch(source.id, Number(unfinished.lastInsertRowid))).status, 409);
   assert.equal(f.runtime.db.prepare("SELECT COUNT(*) n FROM sessions").get().n, 2);
   assert.equal((await f.request(`/api/sessions/${source.id}/branches`, "GET")).status, 405);
+});
+
+test("可从工具之间的已保存回答创建分支，越过分支点的工具调用不进入新历史", async (t) => {
+  const f = await fixture(t);
+  const session = await f.create();
+  await f.send(session.id, "第一问");
+  const insert = f.runtime.db.prepare(
+    "INSERT INTO messages (session_id, item, created_at) VALUES (?, ?, ?)",
+  );
+  insert.run(
+    session.id,
+    JSON.stringify({ type: "function_call", call_id: "later", name: "read", arguments: "{}" }),
+    Date.now(),
+  );
+  const answerId = Number(
+    insert.run(
+      session.id,
+      JSON.stringify(message("中间回答", "output_text", "assistant")),
+      Date.now(),
+    ).lastInsertRowid,
+  );
+  insert.run(
+    session.id,
+    JSON.stringify({ type: "function_call_output", call_id: "later", output: "工具结果" }),
+    Date.now(),
+  );
+  const response = await f.branch(session.id, answerId);
+  assert.equal(response.status, 201);
+  const branch = await response.json();
+  const history = await f.history(branch.id);
+  assert.deepEqual(
+    history.map((row) => row.item.content[0].text),
+    ["第一问", "回答", "中间回答"],
+  );
+  assert.equal((await f.history(session.id)).length, 5);
+});
+
+test("撤回目标及后续消息，同步新历史与计量，并完整恢复文字、图片和普通附件", async (t) => {
+  const f = await fixture(t);
+  const session = await f.create("撤回测试");
+  const base = `/api/sessions/${session.id}`;
+  await f.send(session.id, "保留");
+  const original = await f.history(session.id);
+  const file = { name: "资料.txt", data: "data:text/plain;base64,SGVsbG8=" };
+  await runReply(f.request, base + "/messages", {
+    text: "重新编辑",
+    images: [png],
+    attachments: [file],
+  });
+  const target = (await f.history(session.id)).at(-2);
+  await f.send(session.id, "一起移除");
+  const latest = (await f.history(session.id)).at(-1).id;
+  const recall = (messageId, lastMessageId) =>
+    f.request(`${base}/messages/${messageId}/recall`, "POST", { last_message_id: lastMessageId });
+  assert.equal((await recall(target.id, target.id)).status, 409);
+  assert.equal((await recall(latest, latest)).status, 400);
+
+  const events = await connectEvents(f.request);
+  try {
+    const response = await recall(target.id, latest);
+    assert.equal(response.status, 200);
+    const after = await response.json();
+    assert.equal(after.draft.text, "重新编辑");
+    assert.deepEqual(
+      after.draft.attachments.map((attachment) => attachment.data),
+      [png, file.data],
+    );
+    assert.equal(after.draft.attachments[1].name, file.name);
+    assert.equal(after.session.request_count, 1);
+    assert.equal(after.session.cost.amount, 0.00015);
+    assert.deepEqual(await f.history(session.id), original);
+    const event = await events.waitFor((frame) => frame.recalled_from === target.id);
+    assert.equal(event.cursor, after.cursor);
+    assert.deepEqual(event.session, after.session);
+    const usage = await (await f.request(base + "/usage")).json();
+    assert.equal(usage.requests, 1);
+    assert.equal(usage.models[0].tokens.total_tokens, 1100);
+    assert.equal((await f.request(target.meta.attachments[0].url)).status, 404);
+    assert.equal((await f.request(target.item.content[1].image_url)).status, 404);
+    assert.equal((await recall(target.id, latest)).status, 404);
+  } finally {
+    await events.close();
+  }
+  await f.send(session.id, "重新发送");
+  assert.equal((await f.history(session.id)).length, original.length + 2);
 });

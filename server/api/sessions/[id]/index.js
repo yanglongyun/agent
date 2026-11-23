@@ -4,6 +4,7 @@ import remove from "./delete.js";
 import messages from "./messages/index.js";
 import compactions from "./compactions/index.js";
 import cancel from "./cancel/index.js";
+import usage from "./usage/index.js";
 import branches from "./branches/index.js";
 import { fail } from "../../http.js";
 
@@ -18,6 +19,8 @@ export default async function session(req, res, parts, context, id) {
         return compactions(req, res, rest, context, id);
       case "cancel":
         return cancel(req, res, rest, context, id);
+      case "usage":
+        return usage(req, res, rest, context, id);
       case "branches":
         return branches(req, res, rest, context, id);
       default:

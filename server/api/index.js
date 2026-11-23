@@ -1,7 +1,6 @@
 import auth from "./auth/index.js";
 import authorize from "./auth/authorize.js";
 import sessions from "./sessions/index.js";
-import notes from "./notes/index.js";
 import config from "./config/index.js";
 import status from "./status/index.js";
 import images from "./images/index.js";
@@ -9,10 +8,6 @@ import attachments from "./attachments/index.js";
 import processes from "./processes/index.js";
 import tasks from "./tasks/index.js";
 import events from "./events/index.js";
-import logs from "./logs/index.js";
-import characters from "./characters/index.js";
-import posts from "./posts/index.js";
-import { createCompanions } from "../characters.js";
 import { createEvents } from "../events.js";
 import { createTaskManager } from "../tasks.js";
 import { fail } from "./http.js";
@@ -20,16 +15,9 @@ import { fail } from "./http.js";
 export default function createApi(context) {
   // 会话拥有回复；连接只订阅事件，最后一次终止结果保留到下次回复或删除。
   context.replies = new Map();
+  context.recalling = new Set();
   context.events = createEvents();
   context.tasks = createTaskManager(context.db, context.paths);
-  context.companions = createCompanions(
-    context.db,
-    context.paths,
-    () => context.config,
-    context.events,
-  );
-  context.companions.start();
-
   async function route(req, res, parts) {
     const name = parts[0];
     const rest = parts.slice(1);
@@ -47,14 +35,6 @@ export default function createApi(context) {
         return tasks(req, res, rest, context);
       case "sessions":
         return sessions(req, res, rest, context);
-      case "notes":
-        return notes(req, res, rest, context);
-      case "characters":
-        return characters(req, res, rest, context);
-      case "posts":
-        return posts(req, res, rest, context);
-      case "logs":
-        return logs(req, res, rest, context);
       case "config":
         return config(req, res, rest, context);
       case "status":
@@ -75,7 +55,6 @@ export default function createApi(context) {
       request.controller.abort();
     }
     await context.tasks.close();
-    await context.companions.close();
     await Promise.all(requests.map((request) => request.done));
   }
 

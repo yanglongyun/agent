@@ -14,13 +14,6 @@ export default async function get(req, res, context) {
     workdir: config.workdir,
     timeout: config.timeout,
     max_output: config.max_output,
-    image: { url: config.image.url, model: config.image.model, key_set: Boolean(config.image.key) },
-    api: { listen: config.api.listen },
-    paths: {
-      data_dir: context.paths.root,
-      config: context.paths.config,
-      web_dir: context.publicDir,
-    },
   };
   return json(res, 200, view);
 }
